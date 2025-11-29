@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Prueba de Conexión Neural</title>
+    </head>
+    <body style="background-color: #222; color: #0f0; font-family: monospace;">
+        <h1>SISTEMA DE COMUNICACIÓN: LA SENDA DE LOS LOBOS</h1>
+        
+        <label>Tu ID de Jugador:</label>
+        <input type="text" id="playerId" value="Lobo1" autocomplete="off"/>
+        <button onclick="conectar()">CONECTAR AL SERVIDOR</button>
+        
+        <hr>
+        
+        <form action="" onsubmit="enviarMensaje(event)">
+            <input type="text" id="messageText" autocomplete="off" placeholder="Escribe comando..."/>
+            <button>ENVIAR</button>
+        </form>
+        
+        <ul id='messages'>
+        </ul>
+
+        <script>
+            var ws = null;
+            
+            function conectar() {
+                var playerId = document.getElementById("playerId").value;
+                // Conectamos al WebSocket local
+                ws = new WebSocket("ws://localhost:8000/ws/" + playerId);
+                
+                ws.onmessage = function(event) {
+                    var messages = document.getElementById('messages');
+                    var message = document.createElement('li');
+                    var content = document.createTextNode(event.data);
+                    message.appendChild(content);
+                    messages.appendChild(message);
+                };
+            }
+
+            function enviarMensaje(event) {
+                event.preventDefault();
+                var input = document.getElementById("messageText");
+                ws.send(input.value);
+                input.value = '';
+            }
+        </script>
+    </body>
+</html>

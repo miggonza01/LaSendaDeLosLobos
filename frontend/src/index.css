@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Fondo global para evitar bordes blancos */
+body {
+  background-color: #0f172a; /* lobo-dark */
+  color: white;
+}
