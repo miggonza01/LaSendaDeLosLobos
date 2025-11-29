@@ -114,7 +114,8 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
         Consulta, formatea y emite el Top 5 de jugadores por Patrimonio Neto.
         """
         # 1. Consulta a MongoDB: Orden descendente (-) por net_worth
-        top_players = await Player.find_all().sort("-financials.net_worth").limit(5).to_list()
+        # Usamos 'netWorth' porque así se llama el campo físico en MongoDB (definido por el alias)
+        top_players = await Player.find_all().sort("-financials.netWorth").limit(5).to_list()
         
         # 2. Serialización manual para JSON
         ranking_data = []
