@@ -140,8 +140,8 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     
                     # 5. VERIFICAR VICTORIA (LÓGICA NUEVA) 🏆
                     # Definimos la meta (1 Millón)
-                    META_VICTORIA = Decimal("1000000.00")
-                    # META_VICTORIA = Decimal("2000.00") # <-- Descomenta esto si quieres probar ganar rápido
+                    # META_VICTORIA = Decimal("1000000.00")
+                    META_VICTORIA = Decimal("1500.00") # <-- Descomenta esto si quieres probar ganar rápido
                     
                     tipo_mensaje = "UPDATE_PLAYER" # Por defecto es actualización normal
                     
