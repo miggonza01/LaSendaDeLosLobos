@@ -1,5 +1,5 @@
 # ==============================================================================
-# 📄 ARCHIVO: main.py (VERSIÓN BLINDADA Y CORREGIDA)
+# 📄 ARCHIVO: main.py (VERSIÓN FINAL CON VICTORIA 🏆)
 # ==============================================================================
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -29,15 +29,13 @@ async def lifespan(app: FastAPI):
 # --- INSTANCIA DE LA APP ---
 app = FastAPI(
     title="La Senda de los Lobos",
-    version="0.4.1 Fix",
+    version="1.0.0 Victory",
     lifespan=lifespan
 )
 
 # --- SEGURIDAD (CORS) ---
+# Permitimos todo para facilitar el despliegue en Render/Vercel
 origins = ["*"]
-#    "http://localhost:5173",
-#    "http://127.0.0.1:5173",
-#]
 
 app.add_middleware(
     CORSMiddleware,
@@ -102,13 +100,12 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     else:
                         jugador_actual.position = nueva_posicion_bruta
                     
-                    # 3. CHEQUEO DE EVENTOS (EL LOBO MUERDE)
+                    # 3. CHEQUEO DE EVENTOS (EL LOBO MUERDE O BENDICE)
                     evento = obtener_evento(jugador_actual.position)
                     mensaje_evento = ""
                     
+                    # --- CASO A: LOBO NEGRO (DEUDA) ---
                     if evento and evento["tipo"] == "LOBO_NEGRO":
-                        # Convertimos el costo a Decimal para operar con dinero
-                        # ESTA LÍNEA ES LA QUE FALLABA ANTES
                         costo = Decimal(evento["costo"])
                         
                         if jugador_actual.financials.cash >= costo:
@@ -120,37 +117,43 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                             jugador_actual.financials.toxic_debt += remanente
                             mensaje_evento = f" 🐺 ¡DEUDA TÓXICA! Compraste {evento['titulo']} a crédito."
                         
-                        # Recalcular patrimonio
                         jugador_actual.calculate_net_worth()
 
-                        # ... (Bloque if evento["tipo"] == "LOBO_NEGRO" termina arriba) ...
-
+                    # --- CASO B: LOBO BLANCO (INVERSIÓN) ---
                     elif evento and evento["tipo"] == "LOBO_BLANCO":
                         costo = Decimal(evento["costo"])
                         flujo = Decimal(evento["flujo_extra"])
                         
-                        # Lógica de Compra Automática (Si tienes cash, inviertes)
                         if jugador_actual.financials.cash >= costo:
-                            # 1. Pagamos
+                            # Compra Exitosa
                             jugador_actual.financials.cash -= costo
-                            
-                            # 2. Aumentamos nuestro Ingreso Pasivo (La clave de la riqueza)
                             jugador_actual.financials.passive_income += flujo
-                            
                             mensaje_evento = f" 📈 ¡INVERSIÓN! Compraste {evento['titulo']}. Ahora ganas +${flujo}/vuelta."
                         else:
+                            # Sin fondos
                             mensaje_evento = f" 🔒 Oportunidad perdida: {evento['titulo']}. Necesitabas ${costo}."
                         
                         jugador_actual.calculate_net_worth()
 
-                    # 4. GUARDAR
+                    # 4. GUARDAR CAMBIOS
                     await jugador_actual.save()
                     
-                    # 5. INFORMAR AL FRONTEND
-                    mensaje_log = f"🎲 {jugador_actual.nickname} sacó un {dado} -> Casilla {jugador_actual.position}.{mensaje_payday}{mensaje_evento}"
+                    # 5. VERIFICAR VICTORIA (LÓGICA NUEVA) 🏆
+                    # Definimos la meta (1 Millón)
+                    META_VICTORIA = Decimal("1000000.00")
+                    # META_VICTORIA = Decimal("2000.00") # <-- Descomenta esto si quieres probar ganar rápido
                     
+                    tipo_mensaje = "UPDATE_PLAYER" # Por defecto es actualización normal
+                    
+                    if jugador_actual.financials.net_worth >= META_VICTORIA:
+                        tipo_mensaje = "VICTORY" # ¡SEÑAL ESPECIAL PARA EL FRONTEND!
+                        mensaje_log = f"🏆 ¡{jugador_actual.nickname} HA ESCAPADO DE LA CARRERA DE LA RATA! Patrimonio: ${jugador_actual.financials.net_worth}"
+                    else:
+                        mensaje_log = f"🎲 {jugador_actual.nickname} sacó un {dado} -> Casilla {jugador_actual.position}.{mensaje_payday}{mensaje_evento}"
+                    
+                    # 6. ENVIAR PAQUETE
                     update_package = {
-                        "type": "UPDATE_PLAYER",
+                        "type": tipo_mensaje, # Enviamos "VICTORY" o "UPDATE_PLAYER"
                         "payload": {
                             "player_id": str(jugador_actual.id),
                             "new_position": jugador_actual.position,
@@ -163,11 +166,11 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     }
                     
                     await manager.broadcast(json.dumps(update_package))
-                
+            
             else:
-                # Chat normal
+                # Si llega texto que no es comando de dados (Chat)
                 chat_package = {
-                    "type": "CHAT",
+                    "type": "CHAT", 
                     "message": f"Jugador {player_id} > {data}"
                 }
                 await manager.broadcast(json.dumps(chat_package))

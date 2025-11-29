@@ -1,41 +1,89 @@
 // =============================================================================
-// 📄 ARCHIVO: src/App.jsx (VERSIÓN MAESTRA FINAL - CLOUD READY ☁️)
+// 📄 ARCHIVO: src/App.jsx
+// 📄 VERSIÓN: 4.0 (CLOUD READY + VICTORY CONDITION)
 // =============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
 import FinancialDisplay from './components/FinancialDisplay';
 
+// -----------------------------------------------------------------------------
+// 🏆 COMPONENTE VISUAL: PANTALLA DE VICTORIA
+// -----------------------------------------------------------------------------
+// Este componente es un "Modal". Se renderiza encima de todo el juego.
+// Usa 'fixed inset-0' para cubrir toda la pantalla y 'z-50' para estar al frente.
+const VictoryScreen = ({ nickname, onReset }) => (
+  <div className="fixed inset-0 bg-black/95 flex flex-col items-center justify-center z-50 animate-fade-in p-4 backdrop-blur-sm">
+    
+    {/* Emoji Gigante Animado */}
+    <div className="text-8xl mb-6 animate-bounce">🏆</div>
+    
+    {/* Título con Gradiente Dorado */}
+    <h1 className="text-4xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-500 to-yellow-600 text-center mb-6 drop-shadow-lg">
+      ¡LIBERTAD FINANCIERA!
+    </h1>
+    
+    {/* Mensaje de Felicitación */}
+    <p className="text-xl md:text-2xl text-slate-300 mb-10 text-center max-w-2xl leading-relaxed">
+      El agente <span className="font-bold text-yellow-400">{nickname}</span> ha escapado de la "Carrera de la Rata".
+      <br/>
+      Sus activos ahora pagan su estilo de vida.
+    </p>
+    
+    {/* Botón de Reinicio */}
+    <button 
+      onClick={onReset}
+      className="bg-white text-black font-bold py-4 px-10 rounded-full hover:bg-yellow-400 transition-all transform hover:scale-110 shadow-[0_0_30px_rgba(255,215,0,0.6)]"
+    >
+      Jugar Nueva Partida
+    </button>
+  </div>
+);
+
 function App() {
-  // --- 1. CONFIGURACIÓN DE ENTORNO (CRÍTICO PARA LA NUBE) ---
-  // Detectamos la URL del Backend desde el archivo .env o variables de entorno de Vercel
-  // Si no existe la variable, usamos localhost como respaldo de seguridad.
+  // ---------------------------------------------------------------------------
+  // 1. CONFIGURACIÓN DE ENTORNO (CLOUD READY)
+  // ---------------------------------------------------------------------------
+  // Detectamos si estamos en Localhost o en la Nube (Vercel/Render).
   const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-  // --- ESTADOS DE LA APLICACIÓN ---
+  // ---------------------------------------------------------------------------
+  // 2. ESTADOS DE LA APLICACIÓN (MEMORIA)
+  // ---------------------------------------------------------------------------
   const [nickname, setNickname] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [jugador, setJugador] = useState(null); 
   const [backendStatus, setBackendStatus] = useState("Conectando...");
   
-  // --- ESTADOS DE LA INTERFAZ ---
+  // Estados de Interfaz
   const [logs, setLogs] = useState([]); 
   const [isRolling, setIsRolling] = useState(false); 
   
+  // NUEVO: Estado para saber si alguien ganó
+  const [winner, setWinner] = useState(false);
+  
+  // Referencia persistente al WebSocket
   const ws = useRef(null);
 
   // ---------------------------------------------------------------------------
   // 🔧 FUNCIONES AUXILIARES
   // ---------------------------------------------------------------------------
-  
   const addLog = (text) => {
     setLogs((prev) => [text, ...prev].slice(0, 5));
   };
 
+  // Función para reiniciar el juego completo (Logout)
+  const resetGame = () => {
+    setJugador(null);
+    setWinner(false);
+    setNickname("");
+    setLogs([]);
+    setMensaje("");
+  };
+
   // ---------------------------------------------------------------------------
-  // 2. HEALTH CHECK (Adaptado a Nube)
+  // 3. HEALTH CHECK (Verificar conexión al iniciar)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    // Usamos la variable dinámica API_URL
     fetch(`${API_URL}/`)
       .then((res) => {
         if (res.ok) setBackendStatus("En Línea 🟢");
@@ -45,17 +93,13 @@ function App() {
   }, [API_URL]);
 
   // ---------------------------------------------------------------------------
-  // 3. CONEXIÓN WEBSOCKET (Adaptado a SSL/Nube)
+  // 4. MOTOR WEBSOCKET (EL CEREBRO DE TIEMPO REAL)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (jugador) {
-      // 1. Detectar si estamos en sitio seguro (HTTPS) para usar WSS
+      // Detección automática de protocolo seguro (WSS) para la nube
       const wsProtocol = API_URL.startsWith("https") ? "wss" : "ws";
-      
-      // 2. Limpiar la URL (quitar http:// o https://) para quedarnos con el dominio
       const wsBase = API_URL.replace(/^http(s)?:\/\//, '');
-      
-      // 3. Construir la URL final del socket
       const socket = new WebSocket(`${wsProtocol}://${wsBase}/ws/${jugador._id}`);
       
       socket.onopen = () => {
@@ -66,11 +110,10 @@ function App() {
         try {
           const data = JSON.parse(event.data);
 
-          if (data.type === "UPDATE_PLAYER") {
-            addLog(data.message); 
-            
-            // Actualizar datos SI es mi jugador
-            if (data.payload.player_id === jugador._id) {
+          // Función interna para actualizar los estados del jugador
+          // Se usa tanto en actualizaciones normales como en la victoria
+          const updatePlayerState = () => {
+             if (data.payload.player_id === jugador._id) {
                 setJugador((prev) => ({
                     ...prev, 
                     position: data.payload.new_position,
@@ -79,16 +122,26 @@ function App() {
                       cash: data.payload.new_cash,
                       toxicDebt: data.payload.new_debt,
                       netWorth: data.payload.new_net_worth,
-                      passiveIncome: data.payload.new_passive_income // Mantenemos Ingreso Pasivo
+                      passiveIncome: data.payload.new_passive_income 
                     }
                 }));
             }
+          };
+
+          // --- CASO A: ACTUALIZACIÓN NORMAL ---
+          if (data.type === "UPDATE_PLAYER") {
+            addLog(data.message); 
+            updatePlayerState();
           } 
+          // --- CASO B: ¡VICTORIA! ---
+          else if (data.type === "VICTORY") {
+            addLog(data.message);
+            updatePlayerState(); // Actualizamos para que se vea el $1,000,000 de fondo
+            setWinner(true);     // ¡ACTIVAR PANTALLA DORADA!
+          }
+          // --- CASO C: CHAT / SISTEMA ---
           else if (data.type === "CHAT" || data.type === "SYSTEM") {
             addLog(data.message);
-          }
-          else {
-            addLog(JSON.stringify(data));
           }
 
         } catch (error) {
@@ -107,16 +160,15 @@ function App() {
         socket.close();
       };
     }
-  }, [jugador, API_URL]); // Se reinicia si cambia el jugador o la URL de la API
+  }, [jugador, API_URL]); // Dependencias: Si cambia el jugador o la URL, reiniciamos socket
 
   // ---------------------------------------------------------------------------
-  // 4. LÓGICA DE REGISTRO (Adaptado a Nube)
+  // 5. REGISTRO DE JUGADOR (HTTP POST)
   // ---------------------------------------------------------------------------
   const handleRegister = async () => {
     if (!nickname) return;
     setMensaje("Enviando...");
     try {
-      // Usamos API_URL dinámica
       const response = await fetch(`${API_URL}/players`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -126,6 +178,7 @@ function App() {
       if (response.ok) {
         setJugador(data);
         setMensaje("");
+        setWinner(false); // Asegurar que no haya victoria residual
       } else {
         setMensaje("Error: " + data.detail); 
       }
@@ -136,7 +189,7 @@ function App() {
   };
 
   // ---------------------------------------------------------------------------
-  // 5. ACCIÓN DE JUEGO
+  // 6. ACCIÓN: LANZAR DADOS
   // ---------------------------------------------------------------------------
   const handleDiceRoll = () => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
@@ -146,6 +199,7 @@ function App() {
 
     setIsRolling(true);
     
+    // Simulación visual de espera
     setTimeout(() => {
       ws.current.send(`🎲 ${jugador.nickname} ha lanzado los dados...`);
       setIsRolling(false);
@@ -153,30 +207,43 @@ function App() {
   };
 
   // ---------------------------------------------------------------------------
-  // VISTA
+  // VISTA (RENDERIZADO)
   // ---------------------------------------------------------------------------
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-lobo-dark text-white p-4 font-mono transition-colors duration-500">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-lobo-dark text-white p-4 font-mono transition-colors duration-500 relative">
       
+      {/* 
+         CONDICIONAL: PANTALLA DE VICTORIA 
+         Si 'winner' es true, mostramos el componente VictoryScreen.
+      */}
+      {winner && <VictoryScreen nickname={jugador?.nickname} onReset={resetGame} />}
+
+      {/* TARJETA PRINCIPAL DEL JUEGO */}
       <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden p-8 relative">
         
+        {/* Decoración Superior Neón */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-lobo-neion-red via-purple-500 to-lobo-neon-blue"></div>
 
         <h1 className="text-3xl font-bold mb-6 text-center tracking-tighter">
           LA SENDA <span className="text-lobo-neion-red">DE LOS LOBOS</span>
         </h1>
 
+        {/* --- LÓGICA DE VISTAS: ¿ESTÁ LOGUEADO? --- */}
         {jugador ? (
           <div className="w-full animate-fade-in">
             
+            {/* Cabecera del Usuario */}
             <div className="flex justify-between items-end mb-4 border-b border-slate-800 pb-2">
               <h2 className="text-xl font-bold">Hola, {jugador.nickname}</h2>
-              <button className="text-xs text-red-400 underline hover:text-red-300" onClick={() => setJugador(null)}>
+              <button 
+                className="text-xs text-red-400 underline hover:text-red-300" 
+                onClick={resetGame}
+              >
                 Cerrar Sesión
               </button>
             </div>
 
-            {/* Componente Financiero */}
+            {/* Monitor Financiero (Componente Externo) */}
             <FinancialDisplay financials={jugador.financials} />
 
             {/* Zona de Dados */}
@@ -215,6 +282,7 @@ function App() {
 
           </div>
         ) : (
+          /* --- VISTA DE LOGIN --- */
           <div className="space-y-5 animate-fade-in">
              <input 
                 type="text" 
@@ -234,8 +302,9 @@ function App() {
           </div>
         )}
 
+        {/* Footer de Estado */}
         <div className="mt-8 text-[10px] text-slate-600 text-center flex justify-between border-t border-slate-800 pt-2">
-          <span>v3.0 Cloud Ready</span>
+          <span>v4.0 Victory Edition</span>
           <span className={backendStatus.includes("En Línea") ? "text-green-500 font-bold" : "text-red-500 font-bold"}>{backendStatus}</span>
         </div>
       </div>
