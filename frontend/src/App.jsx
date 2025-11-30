@@ -1,13 +1,14 @@
 // =============================================================================
 // 📄 ARCHIVO: src/App.jsx
-// 📄 VERSIÓN: 4.1 (MASTER EDITION: Cloud + Victory + Leaderboard)
+// 📄 VERSIÓN: 4.2 (MASTER EDITION: Cloud + Victory + Leaderboard + Event Cards)
 // =============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
 
 // Importamos los componentes visuales externos para mantener el código limpio
 import FinancialDisplay from './components/FinancialDisplay';
-import Leaderboard from './components/Leaderboard'; // <--- Integración Paso 21
+import Leaderboard from './components/Leaderboard'; 
+import EventCard from './components/EventCard'; // <--- INTEGRACIÓN CARTA DE EVENTO (Paso 1: Importar)
 
 // -----------------------------------------------------------------------------
 // 🏆 COMPONENTE INTERNO: PANTALLA DE VICTORIA (MODAL)
@@ -57,11 +58,15 @@ function App() {
   const [jugador, setJugador] = useState(null); // Objeto completo del jugador (dinero, posición, etc.)
   
   // Datos del Juego
-  const [leaderboard, setLeaderboard] = useState([]); // Lista del Top 5 (Paso 21)
-  const [winner, setWinner] = useState(false);        // ¿Alguien ganó? (Paso 20)
+  const [leaderboard, setLeaderboard] = useState([]); // Lista del Top 5
+  const [winner, setWinner] = useState(false);        // ¿Alguien ganó?
   const [logs, setLogs] = useState([]);               // Historial del chat
   const [isRolling, setIsRolling] = useState(false);  // Animación de dados
   
+  // INTEGRACIÓN CARTA DE EVENTO (Paso 2: Estado)
+  // Almacena el objeto del evento actual (título, descripción) o null si no hay carta.
+  const [currentCard, setCurrentCard] = useState(null);
+
   // Feedback del Sistema
   const [mensaje, setMensaje] = useState("");
   const [backendStatus, setBackendStatus] = useState("Conectando...");
@@ -86,6 +91,7 @@ function App() {
     setLogs([]);
     setMensaje("");
     setLeaderboard([]);
+    setCurrentCard(null); // Limpiamos carta si hubiera una
     // Cerramos el socket si existe
     if (ws.current) ws.current.close();
   };
@@ -127,10 +133,13 @@ function App() {
           // Parseamos el mensaje JSON que viene de Python
           const data = JSON.parse(event.data);
 
-          // Función local para actualizar datos del jugador actual
-          const updatePlayerState = () => {
+          // INTEGRACIÓN CARTA DE EVENTO (Paso 3: WebSocket Logic)
+          // Lógica Unificada de Actualización de Estado
+          const updateData = () => {
              // Solo actualizamos si el mensaje es para MÍ id
              if (data.payload.player_id === jugador._id) {
+                
+                // 1. Actualizamos al Jugador (Datos Financieros y Posición)
                 setJugador((prev) => ({
                     ...prev, // Mantenemos nombre e ID
                     position: data.payload.new_position,
@@ -142,6 +151,13 @@ function App() {
                       passiveIncome: data.payload.new_passive_income 
                     }
                 }));
+
+                // 2. --- NUEVO: ¿HAY CARTA PARA MOSTRAR? ---
+                // Si el backend envía 'last_event', lo guardamos en el estado 'currentCard'
+                // Esto disparará el renderizado del componente <EventCard />
+                if (data.payload.last_event) {
+                    setCurrentCard(data.payload.last_event);
+                }
             }
           };
 
@@ -150,16 +166,16 @@ function App() {
           if (data.type === "UPDATE_PLAYER") {
             // Movimiento normal o evento financiero
             addLog(data.message); 
-            updatePlayerState();
+            updateData(); // Llamamos a la nueva función unificada
           }
           else if (data.type === "LEADERBOARD") {
-            // Paso 21: Actualización de la Tabla de Posiciones
+            // Actualización de la Tabla de Posiciones
             setLeaderboard(data.payload);
           } 
           else if (data.type === "VICTORY") {
-            // Paso 20: Alguien ganó
+            // Alguien ganó
             addLog(data.message);
-            updatePlayerState(); // Actualizamos para ver los números finales
+            updateData(); // Actualizamos para ver los números finales
             
             // Si el ganador soy YO, mostramos la pantalla dorada
             if (data.payload.player_id === jugador._id) {
@@ -248,6 +264,16 @@ function App() {
       {/* CAPA DE VICTORIA (Condicional) */}
       {winner && <VictoryScreen nickname={jugador?.nickname} onReset={resetGame} />}
 
+      {/* INTEGRACIÓN CARTA DE EVENTO (Paso 4: Renderizado) */}
+      {/* Si existe una 'currentCard' en el estado, mostramos el componente. */}
+      {/* Pasamos 'onClose' para que el componente pueda limpiarse a sí mismo (y al estado) al terminar. */}
+      {currentCard && (
+        <EventCard 
+          eventData={currentCard} 
+          onClose={() => setCurrentCard(null)} 
+        />
+      )}
+
       {/* CONTENEDOR PRINCIPAL */}
       <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden p-8 relative">
         
@@ -278,7 +304,7 @@ function App() {
             {/* 1. Panel Financiero */}
             <FinancialDisplay financials={jugador.financials} />
 
-            {/* 2. Ranking Global (Paso 21) */}
+            {/* 2. Ranking Global */}
             <Leaderboard players={leaderboard} myNickname={jugador.nickname} />
 
             {/* 3. Zona de Acción (Dados) */}
@@ -340,7 +366,7 @@ function App() {
 
         {/* Footer */}
         <div className="mt-8 text-[10px] text-slate-600 text-center flex justify-between border-t border-slate-800 pt-2">
-          <span>v4.1 Master</span>
+          <span>v4.2 Master (Events)</span>
           <span className={backendStatus.includes("En Línea") ? "text-green-500 font-bold" : "text-red-500 font-bold"}>{backendStatus}</span>
         </div>
       </div>

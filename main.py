@@ -1,5 +1,5 @@
 # ==============================================================================
-# 📄 ARCHIVO: main.py (VERSIÓN FINAL: LOGICA 1.1 + BLINDAJE + RESET 💥)
+# 📄 ARCHIVO: main.py (VERSIÓN FINAL: LOGICA 1.1 + BLINDAJE + RESET + EVENT CARDS 🃏)
 # ==============================================================================
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
 # --- INSTANCIA DE LA APP ---
 app = FastAPI(
     title="La Senda de los Lobos",
-    version="1.3.0 System Tools", # Versión incrementada por herramienta de sistema
+    version="1.4.0 Event Cards", # Versión incrementada por funcionalidad visual
     lifespan=lifespan
 )
 
@@ -114,8 +114,7 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
         Consulta, formatea y emite el Top 5 de jugadores por Patrimonio Neto.
         """
         # 1. Consulta a MongoDB: Orden descendente (-) por net_worth
-        # Usamos 'netWorth' porque así se llama el campo físico en MongoDB (definido por el alias)
-        top_players = await Player.find_all().sort("-financials.netWorth").limit(5).to_list()
+        top_players = await Player.find_all().sort("-financials.net_worth").limit(5).to_list()
         
         # 2. Serialización manual para JSON
         ranking_data = []
@@ -153,13 +152,24 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     
                     # 2. LOGICA DE VUELTA (PAYDAY)
                     mensaje_payday = ""
+                    monto_payday_real = Decimal(0) # Variable para guardar cuánto ganamos realmente
                     CASILLAS_TOTALES = 20
                     
                     if nueva_posicion_bruta > CASILLAS_TOTALES:
                         # Jugador completó una vuelta
                         jugador_actual.position = nueva_posicion_bruta - CASILLAS_TOTALES
                         jugador_actual.laps_completed += 1
-                        jugador_actual.apply_payday_logic() # Cobra salario, paga intereses
+                        
+                        # --- CORRECCIÓN MATEMÁTICA ---
+                        # 1. Guardamos cuánto dinero tenía ANTES del pago
+                        dinero_antes = jugador_actual.financials.cash
+                        
+                        # 2. Aplicamos la lógica (Salario - Intereses + Rentas)
+                        jugador_actual.apply_payday_logic() 
+                        
+                        # 3. Calculamos la diferencia exacta para mostrarla
+                        monto_payday_real = jugador_actual.financials.cash - dinero_antes
+                        
                         mensaje_payday = " 💰 ¡PAYDAY! (Salario + Intereses)."
                     else:
                         jugador_actual.position = nueva_posicion_bruta
@@ -208,27 +218,53 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     else:
                         mensaje_log = f"🎲 {jugador_actual.nickname} sacó un {dado} -> Casilla {jugador_actual.position}.{mensaje_payday}{mensaje_evento}"
                     
-                    # 6. ENVIAR ESTADO DEL JUGADOR
+                    # ⬇️⬇️⬇️ NUEVO CÓDIGO INSERTADO (CARTAS VISUALES) ⬇️⬇️⬇️
+
+                    # 6. PREPARAR DATOS DEL EVENTO (PARA LA CARTA VISUAL)
+                    # Si hubo un evento (Lobo Negro/Blanco) o Payday, lo empaquetamos.
+                    datos_carta = None
+                    
+                    if mensaje_payday:
+                        # Formateamos el símbolo dependiendo si ganó o perdió dinero en el Payday
+                        signo = "+" if monto_payday_real >= 0 else "-"
+                        
+                        datos_carta = {
+                            "tipo": "PAYDAY",
+                            "titulo": "¡DÍA DE PAGO!",
+                            "descripcion": "Cobraste salario y rentas. El banco cobró intereses.",
+                            # AQUI ESTÁ EL CAMBIO FINAL: Usamos el valor calculado
+                            "monto": f"{signo} ${abs(monto_payday_real)}"
+                        }
+                    elif evento:
+                        # Si caímos en una casilla especial
+                        datos_carta = {
+                            "tipo": evento["tipo"], # LOBO_NEGRO o LOBO_BLANCO
+                            "titulo": evento["titulo"],
+                            "descripcion": evento["descripcion"],
+                            "monto": f"${evento.get('costo', 0)}"
+                        }
+
+                    # 7. ENVIAR PAQUETE (Ahora con 'last_event')
                     update_package = {
-                        "type": tipo_mensaje,
+                        "type": tipo_mensaje, # VICTORY o UPDATE_PLAYER
                         "payload": {
                             "player_id": str(jugador_actual.id),
                             "new_position": jugador_actual.position,
                             "new_cash": str(jugador_actual.financials.cash),
                             "new_debt": str(jugador_actual.financials.toxic_debt),
                             "new_net_worth": str(jugador_actual.financials.net_worth),
-                            "new_passive_income": str(jugador_actual.financials.passive_income)
+                            "new_passive_income": str(jugador_actual.financials.passive_income),
+                            
+                            # --- NUEVO CAMPO: La carta a mostrar ---
+                            "last_event": datos_carta 
                         },
                         "message": mensaje_log
                     }
                     
-                    # 7. ENVIAR ACTUALIZACIÓN DEL JUGADOR (Tu update_package)
-                    # ... (aquí está tu código de update_package) ...
                     await manager.broadcast(json.dumps(update_package))
-
-                    # 8. ACTUALIZAR RANKING (GLOBAL)
-                    # Se llama tras cada movimiento para reflejar cambios financieros inmediatos
                     await enviar_ranking_global()
+
+                    # ⬆️⬆️⬆️ FIN DEL NUEVO CÓDIGO ⬆️⬆️⬆️
             
             else:
                 # Lógica de Chat
@@ -238,9 +274,7 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 }
                 await manager.broadcast(json.dumps(chat_package))
             
-    # --- BLINDAJE DE CONEXIÓN (INSTRUCCIONES NUEVAS) ---
-    # Capturamos tanto desconexión normal como errores de tiempo de ejecución (RuntimeError)
-    # que ocurren si el cliente cierra el navegador bruscamente mientras se procesa un mensaje.
+    # --- BLINDAJE DE CONEXIÓN ---
     except (WebSocketDisconnect, RuntimeError):
         manager.disconnect(websocket)
         try:
@@ -251,5 +285,4 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
             }
             await manager.broadcast(json.dumps(disconnect_msg))
         except:
-            # Si falla el aviso (ej. servidor cerrándose), no hacemos nada para evitar ruido en logs
             pass
