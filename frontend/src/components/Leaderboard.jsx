@@ -31,6 +31,25 @@ const formatMoney = (amount) => {
  * @param {string} myNickname - El apodo del usuario actual para auto-identificación.
  */
 const Leaderboard = ({ players, myNickname }) => {
+
+  // ⬇️⬇️⬇️ BLOQUE NUEVO: ORDENAMIENTO EN CLIENTE ⬇️⬇️⬇️
+  
+  // --- CORRECCIÓN DE RANKING (CLIENT SIDE SORT) ---
+  // Objetivo: Garantizar que la lista siempre se muestre ordenada de mayor a menor patrimonio,
+  // independientemente del orden en que lleguen los datos crudos del socket.
+  
+  // 1. [...players]: Creamos una "Shallow Copy" (copia superficial) del array original.
+  //    Esto es CRÍTICO en React, ya que 'players' es un prop inmutable. Si usamos .sort()
+  //    directamente sobre 'players', React lanzaría un error de mutación de estado.
+  const sortedPlayers = [...players].sort((a, b) => {
+    // 2. Lógica de comparación numérica:
+    //    Convertimos los strings de dinero ("1500.00") a flotantes reales.
+    //    Restamos B - A para lograr un orden DESCENDENTE (Mayor a menor).
+    return parseFloat(b.net_worth) - parseFloat(a.net_worth);
+  });
+
+  // ⬆️⬆️⬆️ FIN DEL BLOQUE NUEVO ⬆️⬆️⬆️
+
   return (
     // CONTENEDOR PRINCIPAL
     // Estilo "Glassmorphism" oscuro: bg-slate-900 con opacidad (80%)
@@ -38,33 +57,27 @@ const Leaderboard = ({ players, myNickname }) => {
     <div className="mt-4 bg-slate-900/80 border border-slate-700 rounded-lg p-4 w-full max-w-md shadow-lg">
       
       {/* TÍTULO DEL COMPONENTE */}
-      {/* text-lobo-gold: Color semántico para denotar prestigio.
-          border-b: Línea separadora sutil para estructurar el contenido. */}
       <h3 className="text-xs text-lobo-gold uppercase tracking-widest font-bold mb-4 flex items-center gap-2 border-b border-slate-700 pb-2">
         <span>🏆</span> Ranking Global (Top 5)
       </h3>
       
-      {/* CABECERA DE COLUMNAS (REQUERIMIENTO NUEVO) */}
-      {/* Define explícitamente qué datos se muestran.
-          text-[10px]: Fuente diminuta para no competir con los datos.
-          justify-between: Empuja las etiquetas a los extremos opuestos. */}
+      {/* CABECERA DE COLUMNAS */}
       <div className="flex justify-between text-[10px] text-slate-500 mb-2 px-2 font-bold uppercase tracking-wider">
         <span>Lobo / Agente</span>
         <span>Patrimonio Neto</span>
       </div>
       
       {/* LISTA DE JUGADORES */}
-      {/* space-y-2: Añade margen vertical consistente entre cada fila. */}
       <div className="space-y-2">
-        {players.map((p, index) => (
+        
+        {/* ⬇️ CAMBIO AQUÍ: Iteramos sobre 'sortedPlayers' en lugar de 'players' */}
+        {sortedPlayers.map((p, index) => (
           <div 
             key={index} 
             // ESTILOS DINÁMICOS DE FILA
             // Si es el usuario actual (p.nickname === myNickname):
             // - Fondo azul neón tenue (bg-lobo-neon-blue/20)
             // - Borde brillante y sombra (glow effect)
-            // Si es otro jugador:
-            // - Fondo oscuro estándar con efecto hover simple.
             className={`flex justify-between items-center text-xs p-2 rounded transition-colors ${
               p.nickname === myNickname 
                 ? "bg-lobo-neon-blue/20 border border-lobo-neon-blue/50 shadow-[0_0_10px_rgba(59,130,246,0.1)]" 
@@ -75,11 +88,7 @@ const Leaderboard = ({ players, myNickname }) => {
             <div className="flex items-center gap-3">
               
               {/* INSIGNIA DE POSICIÓN (BADGE) */}
-              {/* Lógica de colores para el PODIO (Oro, Plata, Bronce):
-                  - index 0: Oro (bg-yellow-500)
-                  - index 1: Plata (bg-slate-400)
-                  - index 2: Bronce (bg-orange-700)
-                  - Resto: Gris oscuro estándar */}
+              {/* Lógica de colores para el PODIO (Oro, Plata, Bronce) */}
               <span className={`font-bold font-mono w-5 h-5 flex items-center justify-center rounded-full text-[10px] ${
                 index === 0 ? "bg-yellow-500 text-black" : 
                 index === 1 ? "bg-slate-400 text-black" :
@@ -89,17 +98,14 @@ const Leaderboard = ({ players, myNickname }) => {
               </span>
               
               {/* NOMBRE DEL JUGADOR */}
-              {/* truncate: Corta nombres muy largos con puntos suspensivos (...)
-                  max-w-[100px]: Límite de ancho para no romper la tabla. */}
+              {/* truncate: Corta nombres muy largos con puntos suspensivos (...) */}
               <span className={`truncate max-w-[100px] ${p.nickname === myNickname ? "text-white font-bold" : "text-slate-300"}`}>
                 {p.nickname} {p.nickname === myNickname && "(Tú)"}
               </span>
             </div>
             
             {/* LADO DERECHO: EL DINERO (Patrimonio Neto) */}
-            {/* Lógica de color semántico:
-                - Si supera $1,000,000 (Meta de Victoria): Texto amarillo brillante.
-                - Si no: Texto verde estándar. */}
+            {/* Si supera $1M, se pone amarillo (Victoria) */}
             <span className={`font-mono font-bold ${
               parseFloat(p.net_worth) >= 1000000 ? "text-yellow-400" : "text-green-400"
             }`}>
@@ -109,7 +115,6 @@ const Leaderboard = ({ players, myNickname }) => {
         ))}
         
         {/* ESTADO VACÍO (EMPTY STATE) */}
-        {/* Se muestra solo si el array 'players' está vacío. */}
         {players.length === 0 && (
           <p className="text-center text-slate-500 italic text-xs py-2">Buscando señales de vida...</p>
         )}

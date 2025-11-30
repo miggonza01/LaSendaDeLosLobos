@@ -89,11 +89,10 @@ class Player(Document):
         """
         Evento PAYDAY: Salario + Ingreso Pasivo - Interés Deuda
         """
-        SALARY = Decimal("1000.00")
-        INTEREST_RATE = Decimal("0.05") 
+        SALARY = Decimal("2500.00")
+        INTEREST_RATE = Decimal("0.10") 
 
         # 1. INGRESOS (Salario + Lo que ganan tus activos)
-        # --- CAMBIO AQUÍ ---
         total_income = SALARY + self.financials.passive_income
         self.financials.cash += total_income
 

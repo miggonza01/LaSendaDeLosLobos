@@ -78,7 +78,19 @@ const EventCard = ({ eventData, onClose }) => {
       icon: "💰",
       textColor: "text-green-400"
     };
+  } 
+  // ⬇️⬇️⬇️ NUEVO BLOQUE INSERTADO (ESTILO NEUTRO) ⬇️⬇️⬇️
+  // ESTILO: DIDÁCTICA INVISIBLE / NARRATIVA
+  // Se usa para eventos de relleno que no impactan las finanzas.
+  else if (eventData.tipo === "NEUTRO") {
+    styles = {
+      borderColor: "border-slate-400", // Gris pizarra (calma/neutralidad)
+      glow: "shadow-[0_0_20px_rgba(148,163,184,0.3)]", // Resplandor mucho más suave y difuso
+      icon: "🧘", // Icono de Zen / Meditación (refleja la pausa en la acción)
+      textColor: "text-slate-300" // Texto gris claro para diferenciar de la urgencia del blanco/color
+    };
   }
+  // ⬆️⬆️⬆️ FIN DEL NUEVO BLOQUE ⬆️⬆️⬆️
 
   // --- RENDERIZADO (JSX) ---
   return (

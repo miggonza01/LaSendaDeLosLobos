@@ -1,5 +1,5 @@
 # ==============================================================================
-# 📄 ARCHIVO: main.py (VERSIÓN FINAL: LOGICA 1.1 + BLINDAJE + RESET + EVENT CARDS 🃏)
+# 📄 ARCHIVO: main.py (VERSIÓN FINAL: LOGICA 1.1 + BLINDAJE + RESET + QUEUE 🚦)
 # ==============================================================================
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
 # --- INSTANCIA DE LA APP ---
 app = FastAPI(
     title="La Senda de los Lobos",
-    version="1.4.0 Event Cards", # Versión incrementada por funcionalidad visual
+    version="1.7.0 Event Queue", # Versión incrementada por manejo de cola de eventos
     lifespan=lifespan
 )
 
@@ -73,7 +73,7 @@ async def listar_jugadores():
     """Devuelve la lista completa de jugadores registrados."""
     return await Player.find_all().to_list()
 
-# ⬇️⬇️⬇️ NUEVO BLOQUE INSERTADO (HERRAMIENTA DE SISTEMA) ⬇️⬇️⬇️
+# ⬇️⬇️⬇️ HERRAMIENTA DE SISTEMA ⬇️⬇️⬇️
 
 @app.delete("/reset_game", tags=["Sistema"])
 async def reiniciar_juego():
@@ -82,17 +82,12 @@ async def reiniciar_juego():
     ---------------------------------
     Este endpoint elimina TODOS los documentos de la colección 'Players'.
     Se utiliza para reiniciar la partida y limpiar el Ranking Global.
-    
-    Verbo HTTP: DELETE
-    Acción en BD: Player.delete_all() (Método destructivo de Beanie)
     """
     # 1. Ejecución de limpieza masiva en MongoDB
     await Player.delete_all()
     
     # 2. Confirmación al cliente (Feedback visual)
     return {"mensaje": "💥 ¡El meteorito ha caído! Todos los registros han sido borrados."}
-
-# ⬆️⬆️⬆️ FIN DEL NUEVO BLOQUE ⬆️⬆️⬆️
 
 # ==============================================================================
 # RUTAS WEBSOCKET (MOTOR DE JUEGO EN TIEMPO REAL)
@@ -150,103 +145,120 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     posicion_previa = jugador_actual.position
                     nueva_posicion_bruta = posicion_previa + dado
                     
-                    # 2. LOGICA DE VUELTA (PAYDAY)
+                    # ⬇️⬇️⬇️ BLOQUE MODIFICADO (QUEUE + PAYDAY) ⬇️⬇️⬇️
+                    
+                    # ----------------------------------------------------------
+                    # 2. LOGICA DE VUELTA (PAYDAY) + COLA DE EVENTOS
+                    # ----------------------------------------------------------
                     mensaje_payday = ""
-                    monto_payday_real = Decimal(0) # Variable para guardar cuánto ganamos realmente
+                    monto_payday_real = Decimal(0)
                     CASILLAS_TOTALES = 20
                     
+                    # Iniciamos la cola de eventos visuales vacía
+                    cola_de_eventos = [] 
+                    
                     if nueva_posicion_bruta > CASILLAS_TOTALES:
-                        # Jugador completó una vuelta
+                        # --- EVENTO 1: VUELTA COMPLETA (PAYDAY) ---
                         jugador_actual.position = nueva_posicion_bruta - CASILLAS_TOTALES
                         jugador_actual.laps_completed += 1
                         
-                        # --- CORRECCIÓN MATEMÁTICA ---
-                        # 1. Guardamos cuánto dinero tenía ANTES del pago
+                        # Cálculo exacto del impacto financiero
                         dinero_antes = jugador_actual.financials.cash
-                        
-                        # 2. Aplicamos la lógica (Salario - Intereses + Rentas)
                         jugador_actual.apply_payday_logic() 
-                        
-                        # 3. Calculamos la diferencia exacta para mostrarla
                         monto_payday_real = jugador_actual.financials.cash - dinero_antes
                         
-                        mensaje_payday = " 💰 ¡PAYDAY! (Salario + Intereses)."
+                        mensaje_payday = " 💰 ¡PAYDAY! (Salario + Rentas - Intereses)."
+                        
+                        # Agregamos la carta de Payday a la cola
+                        signo = "+" if monto_payday_real >= 0 else "-"
+                        cola_de_eventos.append({
+                            "tipo": "PAYDAY",
+                            "titulo": "¡DÍA DE PAGO!",
+                            "descripcion": "Cobraste salario y rentas. El banco cobró intereses.",
+                            "monto": f"{signo} ${abs(monto_payday_real)}"
+                        })
                     else:
                         jugador_actual.position = nueva_posicion_bruta
                     
-                    # 3. RESOLUCIÓN DE EVENTOS (Casillas)
+                    # ----------------------------------------------------------
+                    # 3. RESOLUCIÓN DE EVENTOS (CASILLAS)
+                    # ----------------------------------------------------------
                     evento = obtener_evento(jugador_actual.position)
                     mensaje_evento = ""
                     
-                    # --- Lógica de Lobo Negro (Conserva textos detallados del archivo original) ---
-                    if evento and evento["tipo"] == "LOBO_NEGRO":
-                        costo = Decimal(evento["costo"])
-                        if jugador_actual.financials.cash >= costo:
-                            jugador_actual.financials.cash -= costo
-                            mensaje_evento = f" 📉 Pagaste ${costo} por {evento['titulo']}."
-                        else:
-                            # Mecánica de Deuda Tóxica
-                            remanente = costo - jugador_actual.financials.cash
-                            jugador_actual.financials.cash = Decimal(0)
-                            jugador_actual.financials.toxic_debt += remanente
-                            mensaje_evento = f" 🐺 ¡DEUDA TÓXICA! Compraste {evento['titulo']} a crédito."
-                        jugador_actual.calculate_net_worth()
+                    if evento:
+                        # Inicializamos variables visuales
+                        descripcion_visual = evento["descripcion"]
+                        monto_visual = None
 
-                    # --- Lógica de Lobo Blanco (Inversión) ---
-                    elif evento and evento["tipo"] == "LOBO_BLANCO":
-                        costo = Decimal(evento["costo"])
-                        flujo = Decimal(evento["flujo_extra"])
-                        if jugador_actual.financials.cash >= costo:
-                            jugador_actual.financials.cash -= costo
-                            jugador_actual.financials.passive_income += flujo
-                            mensaje_evento = f" 📈 ¡INVERSIÓN! Compraste {evento['titulo']}. Ganas +${flujo}/vuelta."
-                        else:
-                            mensaje_evento = f" 🔒 Oportunidad perdida: {evento['titulo']}. Faltan ${costo}."
-                        jugador_actual.calculate_net_worth()
+                        # --- CASO A: LOBO NEGRO (GASTO/DEUDA) ---
+                        if evento["tipo"] == "LOBO_NEGRO":
+                            costo = Decimal(evento["costo"])
+                            monto_visual = f"-${costo}"
+                            
+                            if jugador_actual.financials.cash >= costo:
+                                jugador_actual.financials.cash -= costo
+                                mensaje_evento = f" 📉 Pagaste ${costo} por {evento['titulo']}."
+                            else:
+                                remanente = costo - jugador_actual.financials.cash
+                                jugador_actual.financials.cash = Decimal(0)
+                                jugador_actual.financials.toxic_debt += remanente
+                                mensaje_evento = f" 🐺 ¡DEUDA! {evento['titulo']}."
+                            
+                            jugador_actual.calculate_net_worth()
+
+                        # --- CASO B: LOBO BLANCO (INVERSIÓN) ---
+                        elif evento["tipo"] == "LOBO_BLANCO":
+                            costo = Decimal(evento["costo"])
+                            flujo = Decimal(evento["flujo_extra"])
+                            monto_visual = f"-${costo}"
+                            
+                            if jugador_actual.financials.cash >= costo:
+                                # Compra exitosa
+                                jugador_actual.financials.cash -= costo
+                                jugador_actual.financials.passive_income += flujo
+                                mensaje_evento = f" 📈 ¡INVERSIÓN! {evento['titulo']}."
+                            else:
+                                # Compra fallida
+                                mensaje_evento = f" 🔒 Sin fondos para: {evento['titulo']}."
+                                descripcion_visual = "Oportunidad perdida por falta de efectivo."
+                                monto_visual = None # No gastaste nada
+                            
+                            jugador_actual.calculate_net_worth()
+
+                        # --- CASO C: NEUTRO (DIDÁCTICA) ---
+                        elif evento["tipo"] == "NEUTRO":
+                            mensaje_evento = f" 🧘 {evento['titulo']}"
+                            monto_visual = None
+
+                        # --- EVENTO 2: LA CASILLA ---
+                        # Agregamos la carta del evento a la cola (se mostrará después del Payday si lo hubo)
+                        cola_de_eventos.append({
+                            "tipo": evento["tipo"],
+                            "titulo": evento["titulo"],
+                            "descripcion": descripcion_visual,
+                            "monto": monto_visual
+                        })
+
+                    # ⬆️⬆️⬆️ FIN DEL BLOQUE MODIFICADO ⬆️⬆️⬆️
 
                     # 4. PERSISTENCIA
                     await jugador_actual.save()
                     
-                    # 5. VERIFICACIÓN DE VICTORIA
-                    META_VICTORIA = Decimal("1000000.00") # Meta ajustada para testing
+                    # 5. VICTORIA
+                    META_VICTORIA = Decimal("1000000.00") 
                     tipo_mensaje = "UPDATE_PLAYER"
-                    mensaje_log = ""
+                    mensaje_log = "" 
                     
                     if jugador_actual.financials.net_worth >= META_VICTORIA:
                         tipo_mensaje = "VICTORY"
-                        mensaje_log = f"🏆 ¡{jugador_actual.nickname} HA ESCAPADO DE LA CARRERA DE LA RATA!"
+                        mensaje_log = f"🏆 ¡{jugador_actual.nickname} GANÓ!"
                     else:
-                        mensaje_log = f"🎲 {jugador_actual.nickname} sacó un {dado} -> Casilla {jugador_actual.position}.{mensaje_payday}{mensaje_evento}"
-                    
-                    # ⬇️⬇️⬇️ NUEVO CÓDIGO INSERTADO (CARTAS VISUALES) ⬇️⬇️⬇️
+                         mensaje_log = f"🎲 {jugador_actual.nickname} -> Casilla {jugador_actual.position}.{mensaje_payday}{mensaje_evento}"
 
-                    # 6. PREPARAR DATOS DEL EVENTO (PARA LA CARTA VISUAL)
-                    # Si hubo un evento (Lobo Negro/Blanco) o Payday, lo empaquetamos.
-                    datos_carta = None
-                    
-                    if mensaje_payday:
-                        # Formateamos el símbolo dependiendo si ganó o perdió dinero en el Payday
-                        signo = "+" if monto_payday_real >= 0 else "-"
-                        
-                        datos_carta = {
-                            "tipo": "PAYDAY",
-                            "titulo": "¡DÍA DE PAGO!",
-                            "descripcion": "Cobraste salario y rentas. El banco cobró intereses.",
-                            # AQUI ESTÁ EL CAMBIO FINAL: Usamos el valor calculado
-                            "monto": f"{signo} ${abs(monto_payday_real)}"
-                        }
-                    elif evento:
-                        # Si caímos en una casilla especial
-                        datos_carta = {
-                            "tipo": evento["tipo"], # LOBO_NEGRO o LOBO_BLANCO
-                            "titulo": evento["titulo"],
-                            "descripcion": evento["descripcion"],
-                            "monto": f"${evento.get('costo', 0)}"
-                        }
-
-                    # 7. ENVIAR PAQUETE (Ahora con 'last_event')
+                    # 6. ENVIAR PAQUETE (AHORA CON QUEUE)
                     update_package = {
-                        "type": tipo_mensaje, # VICTORY o UPDATE_PLAYER
+                        "type": tipo_mensaje,
                         "payload": {
                             "player_id": str(jugador_actual.id),
                             "new_position": jugador_actual.position,
@@ -255,16 +267,14 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                             "new_net_worth": str(jugador_actual.financials.net_worth),
                             "new_passive_income": str(jugador_actual.financials.passive_income),
                             
-                            # --- NUEVO CAMPO: La carta a mostrar ---
-                            "last_event": datos_carta 
+                            # CAMBIO CLAVE: Enviamos la lista completa de eventos
+                            "event_queue": cola_de_eventos 
                         },
                         "message": mensaje_log
                     }
                     
                     await manager.broadcast(json.dumps(update_package))
                     await enviar_ranking_global()
-
-                    # ⬆️⬆️⬆️ FIN DEL NUEVO CÓDIGO ⬆️⬆️⬆️
             
             else:
                 # Lógica de Chat
