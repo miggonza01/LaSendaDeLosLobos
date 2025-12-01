@@ -81,7 +81,9 @@ function App() {
     if (jugador) {
       const wsProtocol = API_URL.startsWith("https") ? "wss" : "ws";
       const wsBase = API_URL.replace(/^http(s)?:\/\//, ''); 
-      const socket = new WebSocket(`${wsProtocol}://${wsBase}/ws/${jugador._id}`);
+      // Usamos 'jugador.id' (Pydantic standard) o 'jugador._id' (Mongo standard) como respaldo
+      const idJugador = jugador.id || jugador._id; 
+      const socket = new WebSocket(`${wsProtocol}://${wsBase}/ws/${idJugador}`);
       
       socket.onopen = () => {
         addLog("✅ Conexión Neural Establecida");
