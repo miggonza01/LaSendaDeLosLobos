@@ -1,6 +1,6 @@
 // =============================================================================
 // 📄 ARCHIVO: src/App.jsx
-// 📄 VERSIÓN: 4.4 (MASTER EDITION: Queue + Ranking Fix 🔧)
+// 📄 VERSIÓN: 4.5 (MASTER EDITION: Queue + Ranking Fix + Audio FX 🎵)
 // =============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -9,6 +9,30 @@ import React, { useState, useEffect, useRef } from 'react';
 import FinancialDisplay from './components/FinancialDisplay';
 import Leaderboard from './components/Leaderboard'; 
 import EventCard from './components/EventCard'; 
+
+// ⬇️⬇️⬇️ NUEVO SISTEMA DE AUDIO (INYECTADO) ⬇️⬇️⬇️
+// Definimos los efectos de sonido usando URLs de CDN estables (Google Sounds).
+const AUDIO_CLIPS = {
+  // 🎲 DADO: Usamos el archivo local de Pixabay que subiste.
+  // Al ponerlo en la carpeta 'public', accedemos a él con la barra "/" inicial.
+  dice: new Audio("/dice-142528.mp3"),
+  cash: new Audio("https://cdn.pixabay.com/audio/2021/08/04/audio_0625c1539c.mp3"), 
+  alert: new Audio("https://actions.google.com/sounds/v1/cartoon/cartoon_cowbell.ogg"), 
+  victory: new Audio("https://cdn.pixabay.com/audio/2021/08/04/audio_12b0c7443c.mp3") 
+};
+
+// Función auxiliar para reproducir sonido de forma segura (evita errores de autoplay)
+const playSound = (key) => {
+  try {
+    const sound = AUDIO_CLIPS[key];
+    if (sound) {
+      sound.currentTime = 0; // Reinicia el audio si ya estaba sonando (para repeticiones rápidas)
+      sound.volume = 0.4;    // Volumen moderado
+      sound.play().catch(e => console.warn("Audio autoplay bloqueado por el navegador", e));
+    }
+  } catch (e) { console.error(e); }
+};
+// ⬆️⬆️⬆️ FIN DEL SISTEMA DE AUDIO ⬆️⬆️⬆️
 
 // -----------------------------------------------------------------------------
 // 🏆 COMPONENTE INTERNO: PANTALLA DE VICTORIA
@@ -43,6 +67,8 @@ function App() {
   const [winner, setWinner] = useState(false);        
   const [logs, setLogs] = useState([]);               
   const [isRolling, setIsRolling] = useState(false);  
+  
+  // Mantenemos 'cardQueue' (Sistema moderno) en lugar de 'currentCard'
   const [cardQueue, setCardQueue] = useState([]); 
 
   const [mensaje, setMensaje] = useState("");
@@ -79,10 +105,11 @@ function App() {
   // --- MOTOR WEBSOCKET ---
   useEffect(() => {
     if (jugador) {
+      // Blindaje de ID: Usa jugador.id o jugador._id según disponibilidad
+      const idJugador = jugador.id || jugador._id;
+      
       const wsProtocol = API_URL.startsWith("https") ? "wss" : "ws";
       const wsBase = API_URL.replace(/^http(s)?:\/\//, ''); 
-      // Usamos 'jugador.id' (Pydantic standard) o 'jugador._id' (Mongo standard) como respaldo
-      const idJugador = jugador.id || jugador._id; 
       const socket = new WebSocket(`${wsProtocol}://${wsBase}/ws/${idJugador}`);
       
       socket.onopen = () => {
@@ -94,7 +121,9 @@ function App() {
           const data = JSON.parse(event.data);
 
           const updateData = () => {
-             if (data.payload.player_id === jugador._id) {
+             // Verificamos ID (Soporta ambos formatos de ID por seguridad)
+             if (data.payload.player_id === jugador._id || data.payload.player_id === jugador.id) {
+                
                 setJugador((prev) => ({
                     ...prev, 
                     position: data.payload.new_position,
@@ -102,16 +131,31 @@ function App() {
                       ...prev.financials,
                       cash: data.payload.new_cash,
                       toxicDebt: data.payload.new_debt,
-                      // OJO: Aquí guardamos el patrimonio actualizado en local
                       netWorth: data.payload.new_net_worth, 
                       passiveIncome: data.payload.new_passive_income 
                     }
                 }));
 
+                // Lógica de Cola de Eventos + AUDIO FX
                 if (data.payload.event_queue && data.payload.event_queue.length > 0) {
+                    
+                    // 1. Actualizar Cola Visual
                     setCardQueue((prevQueue) => {
                         return [...prevQueue, ...data.payload.event_queue];
                     });
+
+                    // ⬇️⬇️⬇️ 2. DETONADORES DE AUDIO (NUEVO) ⬇️⬇️⬇️
+                    // Analizamos los eventos que llegaron para tocar el sonido correcto.
+                    const incomingEvents = data.payload.event_queue;
+                    
+                    // ¿Hay dinero entrando? (Payday o Inversión)
+                    const hasMoney = incomingEvents.some(e => e.tipo === "PAYDAY" || e.tipo === "LOBO_BLANCO");
+                    // ¿Hay problemas? (Lobo Negro)
+                    const hasTrouble = incomingEvents.some(e => e.tipo === "LOBO_NEGRO");
+
+                    if (hasMoney) playSound("cash");
+                    else if (hasTrouble) playSound("alert");
+                    // ⬆️⬆️⬆️ FIN DETONADORES DE AUDIO ⬆️⬆️⬆️
                 }
             }
           };
@@ -126,8 +170,9 @@ function App() {
           else if (data.type === "VICTORY") {
             addLog(data.message);
             updateData(); 
-            if (data.payload.player_id === jugador._id) {
+            if (data.payload.player_id === jugador._id || data.payload.player_id === jugador.id) {
                 setWinner(true);
+                playSound("victory"); // <--- SONIDO DE VICTORIA
             }
           }
           else if (data.type === "CHAT" || data.type === "SYSTEM") {
@@ -181,7 +226,9 @@ function App() {
       addLog("⚠️ Error: Sin conexión al servidor");
       return;
     }
-    setIsRolling(true); 
+    setIsRolling(true);
+    playSound("dice"); // <--- SONIDO DE DADOS AL CLICAR
+    
     setTimeout(() => {
       ws.current.send(`🎲 ${jugador.nickname} ha lanzado los dados...`);
       setIsRolling(false);
@@ -189,36 +236,24 @@ function App() {
   };
 
   // ===========================================================================
-  // ⬇️⬇️⬇️ LOGICA DE FUSIÓN (SMART MERGE FIX) ⬇️⬇️⬇️
+  // LOGICA DE FUSIÓN (SMART MERGE FIX PARA RANKING)
   // ===========================================================================
-  // Esta sección arregla el error visual del ranking.
-  // Combina la lista del servidor con tu dato local actualizado.
-  
   const leaderboardFusionado = leaderboard.map((item) => {
-    // 1. Buscamos si la fila del ranking corresponde a NOSOTROS
-    // (Comparamos por nickname porque es único)
     if (jugador && item.nickname === jugador.nickname) {
         return {
             ...item,
-            // 2. FORZAMOS EL DATO:
-            // Usamos 'jugador.financials.netWorth' (que se actualizó hace milisegundos en updateData)
-            // en lugar del 'item.net_worth' que viene lento de la base de datos.
             net_worth: jugador.financials.netWorth 
         };
     }
-    // Si no somos nosotros, dejamos el dato tal cual viene del server
     return item;
   });
-  
-  // ===========================================================================
-  // ⬆️⬆️⬆️ FIN DE LA LÓGICA DE FUSIÓN ⬆️⬆️⬆️
-  // ===========================================================================
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-lobo-dark text-white p-4 font-mono transition-colors duration-500 relative">
       
       {winner && <VictoryScreen nickname={jugador?.nickname} onReset={resetGame} />}
 
+      {/* Renderizado de Cola de Eventos */}
       {cardQueue.length > 0 && (
         <EventCard 
           eventData={cardQueue[0]} 
@@ -243,9 +278,8 @@ function App() {
 
             <FinancialDisplay financials={jugador.financials} />
 
-            {/* ⬇️ CAMBIO IMPORTANTE: Pasamos la lista FUSIONADA ⬇️ */}
+            {/* Ranking Fusionado */}
             <Leaderboard players={leaderboardFusionado} myNickname={jugador.nickname} />
-            {/* ⬆️ Leaderboard.jsx se encargará de re-ordenarla visualmente ⬆️ */}
 
             <div className="mt-4 bg-slate-800/50 p-6 rounded-lg border border-dashed border-slate-600 text-center relative overflow-hidden group">
               <div className={`text-5xl mb-3 transition-all duration-300 ${isRolling ? "animate-spin opacity-100" : "opacity-30 group-hover:opacity-50"}`}>🎲</div>
@@ -279,7 +313,7 @@ function App() {
         )}
 
         <div className="mt-8 text-[10px] text-slate-600 text-center flex justify-between border-t border-slate-800 pt-2">
-          <span>v4.4 Master Fix</span>
+          <span>v4.5 Master (Audio+Queue)</span>
           <span className={backendStatus.includes("En Línea") ? "text-green-500 font-bold" : "text-red-500 font-bold"}>{backendStatus}</span>
         </div>
       </div>
