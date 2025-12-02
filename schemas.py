@@ -1,3 +1,7 @@
+# ==============================================================================
+# 📄 ARCHIVO: schemas.py (VERSIÓN 2.0: SESIONES Y DTOs)
+# ==============================================================================
+
 from pydantic import BaseModel, Field, ConfigDict, BeforeValidator
 from decimal import Decimal
 from typing import Optional, Annotated
@@ -32,21 +36,50 @@ class FinancialSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
-# 2. INPUT: Lo que el usuario envía para registrarse
+# ⬇️⬇️⬇️ NUEVOS SCHEMAS PARA GESTIÓN DE SESIONES (PROFESOR) ⬇️⬇️⬇️
+
+class SessionCreate(BaseModel):
+    """
+    DTO para crear una nueva partida o clase.
+    El profesor envía esto.
+    """
+    code: str = Field(..., min_length=3, max_length=20, description="Código único de la sala (Ej. CLASE-A)")
+
+class SessionRead(BaseModel):
+    """
+    DTO para leer la información de una sesión.
+    """
+    id: Optional[PyObjectId] = Field(None, alias="_id")
+    code: str
+    is_active: bool
+
+# ⬆️⬆️⬆️ FIN DE SCHEMAS DE SESIÓN ⬆️⬆️⬆️
+
+
+# 2. INPUT: Lo que el usuario envía para registrarse (ACTUALIZADO)
 class PlayerCreate(BaseModel):
+    """
+    Ahora el alumno debe enviar su Nickname Y el Código de la sala.
+    """
     nickname: str = Field(..., min_length=3, max_length=20, description="Tu nombre único")
+    
+    # --- NUEVO CAMPO: CÓDIGO DE JUEGO ---
+    # Vincula al jugador con una sesión específica creada por el profesor.
+    game_code: str = Field(..., description="Código de la sala a la que te unes") 
 
 
-# 3. OUTPUT: Lo que mostramos al público
+# 3. OUTPUT: Lo que mostramos al público (ACTUALIZADO)
 class PlayerRead(BaseModel):
-    # --- AQUÍ ESTABA EL ERROR ---
-    # Usamos nuestro tipo personalizado PyObjectId en lugar de Optional[str] simple
-    id: Optional[PyObjectId] = Field(None, alias="_id") 
-    
+    id: Optional[PyObjectId] = Field(None, alias="_id")
     nickname: str
+    
+    # --- NUEVO CAMPO: ID DE SESIÓN ---
+    # Útil para filtrar o depurar a qué partida pertenece el jugador
+    session_id: str 
+    
     position: int
+    laps_completed: int = 0 # Mantenemos este campo para la lógica del frontend
     
-    # Datos financieros
     financials: FinancialSchema 
-    
+
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
