@@ -19,9 +19,9 @@ import GameBoard from './components/GameBoard';
 // -----------------------------------------------------------------------------
 const AUDIO_CLIPS = {
   dice: new Audio("/dice-142528.mp3"), 
-  cash: new Audio("https://actions.google.com/sounds/v1/cartoon/clinking_coins.ogg"), 
-  alert: new Audio("https://actions.google.com/sounds/v1/cartoon/cartoon_cowbell.ogg"), 
-  victory: new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg") 
+  cash: new Audio("/cashier-quotka-chingquot-sound-effect-129698.mp3"), 
+  alert: new Audio("/alert-444816.mp3"), 
+  victory: new Audio("/level-passed-143039.mp3") 
 };
 
 const playSound = (key) => {
