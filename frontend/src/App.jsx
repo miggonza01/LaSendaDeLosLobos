@@ -1,8 +1,8 @@
 // =============================================================================
 // 📄 ARCHIVO: src/App.jsx
-// 📄 VERSIÓN: 8.5 (HISTORIAL DETALLADO GLOBAL)
-// 📝 DESCRIPCIÓN: Controlador principal. Se ha mejorado la lógica del WebSocket
-//    para desglosar y narrar en el historial los eventos de TODOS los jugadores.
+// 📄 VERSIÓN: 8.6 (TABLERO GRÁFICO INTEGRADO)
+// 📝 DESCRIPCIÓN: Controlador principal. Ahora renderiza el GameBoard SVG
+//    en lugar del número de posición simple para el estudiante.
 // =============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -11,7 +11,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import FinancialDisplay from './components/FinancialDisplay';
 import Leaderboard from './components/Leaderboard';
 import EventCard from './components/EventCard';
-import TeacherDashboard from './components/TeacherDashboard'; 
+import TeacherDashboard from './components/TeacherDashboard';
+import GameBoard from './components/GameBoard'; // <--- 1. IMPORTACIÓN NUEVA
 
 // -----------------------------------------------------------------------------
 // 🔊 SISTEMA DE AUDIO
@@ -60,9 +61,7 @@ const VictoryScreen = ({ nickname, onReset }) => (
 function App() {
   const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-  // ---------------------------------------------------------------------------
-  // 1. ESTADOS (STATE)
-  // ---------------------------------------------------------------------------
+  // --- ESTADOS (STATE) ---
   const [gameCode, setGameCode] = useState(""); 
   const [nickname, setNickname] = useState(""); 
   const [role, setRole] = useState(null);       
@@ -94,12 +93,9 @@ function App() {
   useEffect(() => { isTeacherRef.current = isTeacherDashboard; }, [isTeacherDashboard]);
   useEffect(() => { gameCodeRef.current = gameCode; }, [gameCode]);
 
-  // Helper para añadir logs al historial local
   const addLog = (msg) => setLog(prev => [...prev.slice(-4), msg]);
 
-  // ---------------------------------------------------------------------------
-  // 2. EFECTOS (SIDE EFFECTS)
-  // ---------------------------------------------------------------------------
+  // --- 2. EFECTOS (SIDE EFFECTS) ---
 
   // Health Check
   useEffect(() => {
@@ -128,50 +124,22 @@ function App() {
         try {
             const data = JSON.parse(e.data);
             
-            // =================================================================
-            // 🧠 LÓGICA CENTRAL DE ACTUALIZACIÓN
-            // =================================================================
             if (data.type === "UPDATE_PLAYER") {
                 const payload = data.payload;
-                const pName = payload.nickname || "Jugador"; // Nombre de quien movió
                 
-                // 1. LOGUEAR MOVIMIENTO BÁSICO (Para todos)
-                // data.message suele ser "🎲 Nombre (Casilla X)"
-                addLog(data.message);
+                // Actualizar log global siempre
+                addLog(data.message); 
 
-                // 2. 🛠️ AJUSTE QUIRÚRGICO: NARRAR LAS TARJETAS EN EL CHAT (Para todos)
-                // Recorremos los eventos y generamos texto descriptivo
+                // Lógica Profesor
                 if (payload.event_queue && payload.event_queue.length > 0) {
-                    payload.event_queue.forEach(evt => {
-                        let logText = "";
-                        if (evt.tipo === "PAYDAY") {
-                            logText = `💰 ${pName}: ¡Día de Pago! (${evt.monto})`;
-                        } else if (evt.tipo === "LOBO_NEGRO") {
-                            logText = `🐺 ${pName}: Cayó en ${evt.titulo} (${evt.monto})`;
-                        } else if (evt.tipo === "LOBO_BLANCO") {
-                            // Si hay monto negativo, es que compró. Si es null, no pudo.
-                            if (evt.monto) {
-                                logText = `📈 ${pName}: Invirtió en ${evt.titulo} (${evt.monto})`;
-                            } else {
-                                logText = `🔒 ${pName}: No pudo comprar ${evt.titulo}`;
-                            }
-                        } else if (evt.tipo === "NEUTRO") {
-                            // Opcional: Loguear eventos neutros
-                            // logText = `🧘 ${pName}: ${evt.titulo}`;
-                        }
-
-                        if (logText) addLog(logText);
-                    });
-
-                    // También alimentamos la bitácora del profesor
                     setGlobalActivity(prev => [{
-                        player: pName,
+                        player: payload.nickname || "Jugador",
                         position: payload.new_position,
                         events: payload.event_queue
                     }, ...prev].slice(0, 20)); 
                 }
 
-                // 3. ACTUALIZACIÓN DE ESTADO PERSONAL (Solo si soy yo)
+                // Lógica Alumno
                 if (payload.player_id === idJugador) {
                     setJugador(prev => ({ 
                         ...prev, 
@@ -188,7 +156,6 @@ function App() {
                     if (payload.game_target) setGameTarget(payload.game_target);
                     if (payload.dice_value) setLastDice(payload.dice_value);
 
-                    // Cola visual de tarjetas (Popups)
                     if (payload.event_queue?.length) {
                         setCardQueue(prev => [...prev, ...payload.event_queue]);
                         if (!isTeacherRef.current) {
@@ -229,9 +196,7 @@ function App() {
     return () => { if (ws.current) ws.current.close(); };
   }, [jugador, API_URL]); 
 
-  // ---------------------------------------------------------------------------
-  // 3. HANDLERS
-  // ---------------------------------------------------------------------------
+  // --- 3. HANDLERS ---
   const handleRegister = async () => {
       if(!nickname || !gameCode) return setMensaje("Faltan datos");
       setMensaje("Conectando...");
@@ -298,9 +263,7 @@ function App() {
       }
   };
 
-  // ---------------------------------------------------------------------------
-  // 4. RENDERIZADO
-  // ---------------------------------------------------------------------------
+  // --- 4. RENDERIZADO ---
   
   if (jugador && isTeacherDashboard) {
       return (
@@ -341,7 +304,7 @@ function App() {
                 
                 <FinancialDisplay financials={jugador.financials} target={gameTarget} />
                 
-                {/* HISTORIAL DE JUEGO */}
+                {/* HISTORIAL */}
                 <div className="bg-slate-800 p-4 rounded-xl h-48 overflow-y-auto text-xs font-mono border border-slate-700">
                    <p className="text-slate-500 border-b border-slate-700 pb-1 mb-1 font-bold">HISTORIAL DE JUEGO</p>
                    <div className="flex flex-col gap-1">
@@ -354,22 +317,30 @@ function App() {
                 </div>
             </div>
 
+            {/* --- 2. INTEGRACIÓN: ZONA CENTRAL CON TABLERO GRÁFICO --- */}
             <div className="lg:col-span-5 flex flex-col gap-4">
-                <div className="bg-slate-800 p-6 rounded-xl min-h-[300px] flex flex-col items-center justify-center relative overflow-hidden group">
-                    <div className="text-center z-10">
-                        {lastDice && (
-                            <div className="text-3xl text-yellow-400 font-black mb-4 animate-bounce drop-shadow-md">
-                                🎲 {lastDice}
-                            </div>
-                        )}
-                        <h1 className="text-7xl font-black text-white">{jugador.position}</h1>
-                        <p className="text-lobo-neion-red font-bold text-sm tracking-widest mt-2">CASILLA ACTUAL</p>
-                    </div>
+                
+                <div className="bg-slate-800 p-2 rounded-xl min-h-[350px] flex flex-col items-center justify-center relative overflow-hidden">
+                    
+                    {/* Visualización del Dado */}
+                    {lastDice && (
+                        <div className="absolute top-4 right-4 z-10 bg-black/80 px-4 py-2 rounded-lg border border-yellow-500/50 animate-bounce">
+                            <span className="text-2xl font-bold text-yellow-400">🎲 {lastDice}</span>
+                        </div>
+                    )}
+
+                    {/* COMPONENTE SVG: Muestra fichas de todos los jugadores */}
+                    <GameBoard players={leaderboard} />
+                    
+                    <p className="text-slate-500 text-[10px] mt-2 uppercase tracking-widest">
+                        Estás en la casilla <span className="text-white font-bold">{jugador.position}</span>
+                    </p>
                 </div>
+
                 <button 
                     onClick={lanzarDados} 
                     disabled={isRolling || wsStatus.includes("🔴")} 
-                    className={`w-full bg-lobo-neion-red hover:bg-red-600 py-6 rounded-xl font-black text-xl shadow-lg transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                    className={`w-full bg-lobo-neion-red hover:bg-red-600 py-4 rounded-xl font-black text-xl shadow-lg transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                     {isRolling ? "🎲 RODANDO..." : "LANZAR DADOS"}
                 </button>

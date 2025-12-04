@@ -1,9 +1,15 @@
+// =============================================================================
+// 📄 ARCHIVO: src/components/TeacherDashboard.jsx
+// 📝 DESCRIPCIÓN: Panel de control. Ahora incluye el Tablero Visual.
+// =============================================================================
+
 import React from 'react';
 import Leaderboard from './Leaderboard';
+import GameBoard from './GameBoard'; // <--- IMPORTACIÓN NUEVA
 
 const TeacherDashboard = ({ gameCode, playersData, onReset, connectedCount, globalActivity }) => {
   return (
-    <div className="w-full max-w-6xl mx-auto animate-fade-in p-4 font-mono">
+    <div className="w-full max-w-7xl mx-auto animate-fade-in p-4 font-mono">
       
       {/* --- CABECERA --- */}
       <div className="bg-slate-900 border-2 border-lobo-neion-red rounded-xl p-6 mb-6 shadow-lg text-center relative overflow-hidden">
@@ -19,60 +25,58 @@ const TeacherDashboard = ({ gameCode, playersData, onReset, connectedCount, glob
         </div>
       </div>
 
-      {/* --- GRID DE 3 COLUMNAS --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* --- GRID DE 3 COLUMNAS (Ajustado) --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* COLUMNA 1: RANKING */}
-        <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-5 h-[500px] overflow-hidden flex flex-col">
+        {/* COLUMNA 1: RANKING (3 cols) */}
+        <div className="lg:col-span-3 bg-slate-900/90 border border-slate-700 rounded-xl p-5 h-[600px] overflow-hidden flex flex-col">
           <h3 className="text-lobo-gold font-bold uppercase tracking-widest mb-4 border-b border-slate-700 pb-2">
             📊 Ranking
           </h3>
           <div className="overflow-y-auto flex-1">
-             <Leaderboard players={playersData} myNickname="HOST_PROFESOR" />
+             <Leaderboard players={playersData.filter(p => p.nickname !== "HOST_PROFESOR")} />
           </div>
         </div>
 
-        {/* COLUMNA 2: BITÁCORA DE JUGADAS (NUEVO) */}
-        <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-5 h-[500px] overflow-hidden flex flex-col">
-          <h3 className="text-blue-400 font-bold uppercase tracking-widest mb-4 border-b border-slate-700 pb-2">
-            📜 Actividad en Vivo
+        {/* COLUMNA 2: TABLERO VISUAL (6 cols - CENTRO) */}
+        <div className="lg:col-span-6 bg-slate-900/90 border border-slate-700 rounded-xl p-2 h-[600px] flex flex-col items-center justify-center relative overflow-hidden">
+          
+          <h3 className="text-lobo-neon-blue font-bold uppercase tracking-widest mb-2 absolute top-4 left-4 z-10">
+            🗺️ Mapa en Vivo
           </h3>
-          <div className="overflow-y-auto flex-1 space-y-2 pr-2">
-            {globalActivity.length === 0 ? (
-                <p className="text-slate-600 text-center text-xs mt-10">Esperando lanzamientos...</p>
-            ) : (
-                globalActivity.map((log, i) => (
-                    <div key={i} className="bg-slate-800 p-3 rounded border-l-2 border-slate-600 text-xs">
-                        <div className="flex justify-between mb-1">
-                            <span className="font-bold text-white">{log.player}</span>
-                            <span className="text-slate-400">Casilla {log.position}</span>
-                        </div>
-                        {log.events && log.events.map((e, j) => (
-                            <div key={j} className={`mt-1 pl-2 border-l-2 ${
-                                e.tipo === 'LOBO_NEGRO' ? 'border-red-500 text-red-300' : 
-                                e.tipo === 'LOBO_BLANCO' ? 'border-blue-500 text-blue-300' : 
-                                'border-green-500 text-green-300'
-                            }`}>
-                                <span className="font-bold">{e.titulo}:</span> {e.monto}
-                            </div>
-                        ))}
-                    </div>
-                ))
-            )}
+
+          {/* TABLERO SVG GIGANTE */}
+          <div className="scale-125 transform origin-center">
+             <GameBoard players={playersData} />
+          </div>
+
+          {/* BITÁCORA FLOTANTE SOBRE EL TABLERO */}
+          <div className="absolute bottom-4 w-[90%] bg-black/50 p-2 rounded-lg max-h-[150px] overflow-y-auto text-[10px] border border-white/10">
+             <p className="text-slate-400 mb-1 font-bold sticky top-0 bg-black/50 w-full">ÚLTIMOS EVENTOS:</p>
+             {globalActivity.map((log, i) => (
+                <div key={i} className="text-slate-300 mb-1 border-l-2 border-slate-600 pl-2">
+                    <span className="text-white font-bold">{log.player}</span> en Casilla {log.position}
+                    {log.events && log.events.map((e, j) => (
+                        <span key={j} className={`ml-1 ${e.tipo === 'LOBO_NEGRO' ? 'text-red-400' : 'text-blue-400'}`}>
+                           [{e.titulo}]
+                        </span>
+                    ))}
+                </div>
+             ))}
           </div>
         </div>
 
-        {/* COLUMNA 3: CONTROLES */}
-        <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-5 h-[500px] flex flex-col justify-between">
+        {/* COLUMNA 3: CONTROLES (3 cols) */}
+        <div className="lg:col-span-3 bg-slate-900/90 border border-slate-700 rounded-xl p-5 h-[600px] flex flex-col justify-between">
           <div>
             <h3 className="text-red-400 font-bold uppercase tracking-widest mb-4 border-b border-slate-700 pb-2">
               ⚠️ Control
             </h3>
             <div className="bg-slate-800/50 p-4 rounded-lg mb-4 text-xs text-slate-400 leading-relaxed border border-slate-700">
-              <p className="mb-2 text-white font-bold">Estado del Servidor:</p>
+              <p className="mb-2 text-white font-bold">Estado:</p>
               <ul className="list-disc pl-4 space-y-1">
                 <li>WebSockets: Activos</li>
-                <li>Eventos: Registrando</li>
+                <li>Visualización: 3D SVG</li>
                 <li>Sonido: Habilitado</li>
               </ul>
             </div>
