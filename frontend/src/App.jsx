@@ -1,8 +1,8 @@
 // =============================================================================
 // 📄 ARCHIVO: src/App.jsx
-// 📄 VERSIÓN: 8.3 (LINTER FIX: BACKEND STATUS RESTORED)
-// 📝 DESCRIPCIÓN: Controlador principal. Se reactiva el monitoreo visual
-//    del estado del servidor para corregir variables no usadas.
+// 📄 VERSIÓN: 8.4 (FIX: LOGS HISTORY & ROOM ID)
+// 📝 DESCRIPCIÓN: Controlador principal. Se corrigen la visualización de la
+//    sala en la vista de estudiante y la actualización del historial de texto.
 // =============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -30,7 +30,7 @@ const playSound = (key) => {
     if (sound) { 
       sound.currentTime = 0; 
       sound.volume = 0.5; 
-      sound.play().catch(() => {}); // Catch silencioso para autoplay policies
+      sound.play().catch(() => {}); 
     }
   } catch (error) { 
     console.error("Error crítico en sistema de audio:", error); 
@@ -69,19 +69,14 @@ function App() {
   const [role, setRole] = useState(null);       
   const [jugador, setJugador] = useState(null); 
   
-  // Datos del Juego
   const [leaderboard, setLeaderboard] = useState([]); 
   const [globalActivity, setGlobalActivity] = useState([]); 
   
-  // Configuración Sala
   const [configSalary, setConfigSalary] = useState("2500");
   const [configGoal, setConfigGoal] = useState("1000000");
   const [gameTarget, setGameTarget] = useState("1000000"); 
 
-  // UI States
   const [mensaje, setMensaje] = useState("");   
-  
-  // 🛠️ CORRECCIÓN: Reactivamos el uso de estas variables
   const [backendStatus, setBackendStatus] = useState("Conectando..."); 
   
   const [logs, setLog] = useState(["Esperando inicio..."]); 
@@ -100,18 +95,18 @@ function App() {
   useEffect(() => { isTeacherRef.current = isTeacherDashboard; }, [isTeacherDashboard]);
   useEffect(() => { gameCodeRef.current = gameCode; }, [gameCode]);
 
+  // Helper para añadir logs al historial local
   const addLog = (msg) => setLog(prev => [...prev.slice(-4), msg]);
 
   // ---------------------------------------------------------------------------
   // 2. EFECTOS (SIDE EFFECTS)
   // ---------------------------------------------------------------------------
 
-  // ✅ HEALTH CHECK (CORREGIDO)
-  // Ahora usamos setBackendStatus para actualizar la UI, eliminando el error de "unused vars".
+  // Health Check
   useEffect(() => {
     fetch(`${API_URL}/`)
-      .then(() => setBackendStatus("En Línea 🟢")) // Uso 1: Actualizar éxito
-      .catch(() => setBackendStatus("Offline 🔴")); // Uso 2: Actualizar error
+      .then(() => setBackendStatus("En Línea 🟢")) 
+      .catch(() => setBackendStatus("Offline 🔴"));
   }, [API_URL]);
 
   // MOTOR WEBSOCKET
@@ -134,9 +129,16 @@ function App() {
         try {
             const data = JSON.parse(e.data);
             
+            // CASO: ACTUALIZACIÓN DE JUGADOR
             if (data.type === "UPDATE_PLAYER") {
                 const payload = data.payload;
                 
+                // 🛠️ CORRECCIÓN QUIRÚRGICA 1: ACTUALIZACIÓN DEL LOG
+                // Antes esto estaba solo en el 'else' o no existía para el propio jugador.
+                // Ahora lo ejecutamos siempre para que el historial se mueva.
+                addLog(data.message); 
+
+                // Lógica Profesor
                 if (payload.event_queue && payload.event_queue.length > 0) {
                     setGlobalActivity(prev => [{
                         player: payload.nickname || "Jugador",
@@ -145,6 +147,7 @@ function App() {
                     }, ...prev].slice(0, 20)); 
                 }
 
+                // Lógica Alumno (Si soy yo)
                 if (payload.player_id === idJugador) {
                     setJugador(prev => ({ 
                         ...prev, 
@@ -170,15 +173,22 @@ function App() {
                         }
                     }
                 }
-            } else if (data.type === "LEADERBOARD") {
+            } 
+            else if (data.type === "LEADERBOARD") {
                 setLeaderboard(data.payload);
-            } else if (data.type === "VICTORY") {
+            } 
+            else if (data.type === "VICTORY") {
                 addLog(data.message);
                 if (data.payload?.player_id === idJugador && !isTeacherRef.current) {
                     setWinner(true);
                     playSound("victory");
                 }
             }
+            // Mensajes de chat o sistema
+            else if (data.type === "CHAT" || data.type === "SYSTEM") {
+                addLog(data.message);
+            }
+
         } catch (err) { console.error(err); }
     };
 
@@ -290,36 +300,55 @@ function App() {
             {cardQueue.length > 0 && <EventCard eventData={cardQueue[0]} onClose={() => setCardQueue(prev => prev.slice(1))} />}
 
             <div className="lg:col-span-4 space-y-4">
-                <div className="bg-slate-800 p-4 rounded-xl border-l-4 border-lobo-neion-red flex justify-between">
+                <div className="bg-slate-800 p-4 rounded-xl border-l-4 border-lobo-neion-red flex justify-between items-center">
                     <div>
                         <h2 className="text-xl font-bold">🐺 {jugador.nickname}</h2>
-                        <span className="text-xs text-slate-400">WS: {wsStatus}</span>
+                        
+                        {/* 🛠️ CORRECCIÓN QUIRÚRGICA 2: VISUALIZACIÓN DE SALA */}
+                        <p className="text-xs text-lobo-neon-blue font-bold mt-1">
+                            SALA: <span className="text-white tracking-wider">{gameCode}</span>
+                        </p>
+                        
+                        <p className="text-[10px] text-slate-500 mt-1">
+                            Estado: {wsStatus}
+                        </p>
                     </div>
-                    <button onClick={resetGame} className="text-xs underline">Salir</button>
+                    <button onClick={resetGame} className="text-xs text-red-400 hover:text-white underline">Salir</button>
                 </div>
+                
                 <FinancialDisplay financials={jugador.financials} target={gameTarget} />
+                
+                {/* CAJA DE LOGS / HISTORIAL */}
                 <div className="bg-slate-800 p-4 rounded-xl h-48 overflow-y-auto text-xs font-mono border border-slate-700">
-                   <p className="text-slate-500 border-b border-slate-700 pb-1 mb-1">Historial del Sistema:</p>
-                   {logs.map((l, i) => (
-                       <p key={i} className="mb-1 text-slate-300">{l}</p>
-                   ))}
+                   <p className="text-slate-500 border-b border-slate-700 pb-1 mb-1 font-bold">HISTORIAL DE JUEGO</p>
+                   <div className="flex flex-col gap-1">
+                       {logs.map((l, i) => (
+                           <p key={i} className="text-slate-300 border-l-2 border-slate-600 pl-2">
+                               {l}
+                           </p>
+                       ))}
+                   </div>
                 </div>
             </div>
 
             <div className="lg:col-span-5 flex flex-col gap-4">
-                <div className="bg-slate-800 p-6 rounded-xl min-h-[300px] flex flex-col items-center justify-center relative overflow-hidden">
+                <div className="bg-slate-800 p-6 rounded-xl min-h-[300px] flex flex-col items-center justify-center relative overflow-hidden group">
                     <div className="text-center z-10">
                         {lastDice && (
-                            <div className="text-2xl text-yellow-400 font-bold mb-2 animate-bounce">
+                            <div className="text-3xl text-yellow-400 font-black mb-4 animate-bounce drop-shadow-md">
                                 🎲 {lastDice}
                             </div>
                         )}
-                        <h1 className="text-6xl font-black text-white">{jugador.position}</h1>
-                        <p className="text-lobo-neion-red font-bold text-sm">POSICIÓN ACTUAL</p>
+                        <h1 className="text-7xl font-black text-white">{jugador.position}</h1>
+                        <p className="text-lobo-neion-red font-bold text-sm tracking-widest mt-2">CASILLA ACTUAL</p>
                     </div>
                 </div>
-                <button onClick={lanzarDados} disabled={isRolling} className="w-full bg-lobo-neion-red hover:bg-red-600 py-6 rounded-xl font-black text-xl shadow-lg transition-transform active:scale-95 disabled:opacity-50">
-                    {isRolling ? "🎲 ..." : "LANZAR DADOS"}
+                <button 
+                    onClick={lanzarDados} 
+                    disabled={isRolling || wsStatus.includes("🔴")} 
+                    className={`w-full bg-lobo-neion-red hover:bg-red-600 py-6 rounded-xl font-black text-xl shadow-lg transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                    {isRolling ? "🎲 RODANDO..." : "LANZAR DADOS"}
                 </button>
             </div>
 
@@ -338,7 +367,6 @@ function App() {
             LA SENDA <span className="text-lobo-neion-red">DE LOS LOBOS</span>
         </h1>
         
-        {/* ✅ USO DEL ESTADO RESTAURADO: Visualización del estado del servidor */}
         <p className="text-center text-slate-500 mb-4 text-xs">
             Estado API: {backendStatus}
         </p>
@@ -358,8 +386,8 @@ function App() {
             
             {role === 'STUDENT' ? (
                   <>
-                    <input type="text" value={gameCode} onChange={(e) => setGameCode(e.target.value.toUpperCase())} placeholder="CÓDIGO DE SALA" className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-blue outline-none uppercase"/>
-                    <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="TU APODO" className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-blue outline-none"/>
+                    <input type="text" value={gameCode} onChange={(e) => setGameCode(e.target.value.toUpperCase())} placeholder="CÓDIGO SALA" className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-blue outline-none uppercase"/>
+                    <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="APODO" className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-blue outline-none"/>
                     <button onClick={handleRegister} className="w-full bg-lobo-neon-blue py-3 rounded font-bold text-white shadow-lg hover:bg-blue-600 transition-colors">
                         ENTRAR AHORA
                     </button>
