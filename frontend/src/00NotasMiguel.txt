@@ -1,0 +1,53 @@
+PROTOCOLO DE REINICIO (Paso a Paso)
+Abre tu VSCode en la carpeta del proyecto y abre dos terminales (Terminal -> New Terminal, o el icono +).
+
+🖥️ TERMINAL 1: El Backend (Cerebro Python)
+Sigue estos comandos en orden para Windows (PowerShell):
+
+Activar el entorno virtual (Crucial: verás (venv) al inicio de la línea):
+
+PowerShell
+
+.\venv\Scripts\activate
+(Nota: Si te sale error de "scripts deshabilitados", ejecuta esto primero: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process y repite el paso 2).
+
+Instalar/Verificar Dependencias (Por si acaso): Como se cerró todo, asegúrate de tener las librerías necesarias para tu código (main.py, database.py, etc.):
+
+PowerShell
+
+pip install fastapi uvicorn motor beanie python-dotenv pydantic websockets
+Verificar el archivo .env: Asegúrate de que tu archivo .env con la MONGO_URI siga en la raíz. (VSCode no lo borra, pero verifica que exista).
+
+Encender el Motor:
+
+PowerShell
+
+uvicorn main:app --reload
+Deberías ver: INFO: Uvicorn running on http://127.0.0.1:8000
+
+🎨 TERMINAL 2: El Frontend (React/Vite)
+Navegar a la carpeta del frontend (Si tu App.jsx está dentro de una carpeta, entra ahí. Si está en la raíz junto con package.json, omite este paso):
+
+PowerShell
+
+# Ejemplo: cd frontend  (Solo si tienes carpeta separada)
+Instalar dependencias (Solo si es la primera vez o borraste node_modules, pero es buena práctica ejecutarlo rápido):
+
+PowerShell
+
+npm install
+Lanzar la Interfaz:
+
+PowerShell
+
+npm run dev
+Deberías ver: Local: http://localhost:5173/
+
+3. Checklist de Verificación de Estado
+Una vez ambos comandos estén corriendo:
+
+Backend: Mira la terminal 1. No debe haber errores rojos. Si ves Application startup complete, estamos listos.
+
+Frontend: Abre el navegador en la URL que te dio la terminal 2 (usualmente http://localhost:5173).
+
+Prueba de Fuego: Intenta crear una sala. Si ves los logs en la Terminal 1 reaccionando (POST /sessions 201 Created), ¡hemos vuelto!

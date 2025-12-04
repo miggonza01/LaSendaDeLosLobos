@@ -1,0 +1,12 @@
+FICHA TÉCNICA DEL PROYECTO
+Concepto	Especificación
+Nombre Clave	La Senda de los Lobos (LSL-Engine)
+Tipo	Simulador Financiero Multijugador Masivo (MMO-Lite)
+Backend	Python (FastAPI) + Uvicorn (Asíncrono)
+Base de Datos	MongoDB Atlas (Cluster M0) + Beanie (ODM)
+Frontend	React 18 + Vite + Tailwind CSS
+Comunicación	WebSockets (Nativo) con gestión de salas
+Infraestructura	Render (API) + Vercel (Cliente)
+Seguridad	CORS Wildcard (Dev) / HTTPS + WSS (Prod)
+Matemáticas	Librería decimal.Decimal (Precisión IEEE 754)
+Modelo de Juego	Turnos Sincrónicos, Estado Persistente, Event Driven
