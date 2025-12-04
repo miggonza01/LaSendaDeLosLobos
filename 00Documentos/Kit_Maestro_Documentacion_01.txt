@@ -1,0 +1,157 @@
+Este paquete contiene toda la información necesaria para entender, desarrollar, mantener, jugar y administrar el sistema. Está dividido en 4 secciones estratégicas:
+Diseño y Concepto (GDD)
+Arquitectura Técnica (TDD)
+Manuales de Usuario (Docente y Estudiante)
+Operaciones y Despliegue (DevOps)
+📂 SECCIÓN 1: DISEÑO Y CONCEPTO
+📄 DOCUMENTO 1: HIGH CONCEPT (VISIÓN GENERAL)
+Título del Proyecto: La Senda de los Lobos
+Género: Simulador Financiero Multijugador Masivo (MMO-Lite) / Serious Game.
+Plataforma: Web (Responsive / Mobile-First).
+Target: Estudiantes de secundaria, universitarios y jóvenes adultos (16-35 años).
+Premisa (The Hook):
+La mayoría de las personas viven atrapadas en un ciclo infinito de trabajar para pagar deudas. En "La Senda de los Lobos", el dinero no es el objetivo, es la herramienta. ¿Podrás construir suficientes activos para escapar de la carrera antes de que la deuda te devore?
+Propuesta Única de Valor (USP):
+Realismo Matemático: Usa fórmulas contables reales (Interés Compuesto, Flujo de Caja) en lugar de lógica de videojuegos arcade.
+Multijugador de Aula: Diseñado específicamente para que un profesor proyecte el progreso en tiempo real mientras 30+ alumnos juegan simultáneamente en sus dispositivos.
+Didáctica Invisible: El jugador aprende la diferencia entre "Deuda Buena" y "Deuda Mala" mediante el refuerzo positivo/negativo visual y auditivo, sin leer libros de texto.
+📄 DOCUMENTO 2: GAME DESIGN DOCUMENT (GDD)
+1. Mecánicas Principales (Core Loop)
+Fase de Acción: El jugador lanza un dado virtual (RNG 1-6).
+Fase de Movimiento: La ficha avanza en un tablero circular de 30 casillas.
+Fase de Evento:
+Casilla Vacía (Neutro): Mensaje narrativo de hábitos financieros.
+Lobo Negro (Pasivo): Gasto obligatorio o deuda tóxica. Resta efectivo.
+Lobo Blanco (Activo): Oportunidad de inversión. Requiere decisión (Comprar/Pasar).
+Payday (Vuelta Completa): Se cobra salario + rentas, se pagan intereses.
+Fase de Auditoría: El sistema recalcula automáticamente el Patrimonio Neto.
+Condición de Victoria: Patrimonio Neto >= Meta establecida por el Profesor.
+2. Economía del Juego
+Moneda: Dólares Digitales ($).
+Variables de Estado:
+Cash (Liquidez): Dinero disponible para gastar/invertir.
+Passive Income (Flujo): Dinero generado automáticamente por vuelta.
+Toxic Debt (Lastre): Deuda que genera interés compuesto (-5% por vuelta).
+Net Worth (Puntaje): (Cash + Valor Activos) - Deuda.
+Valoración de Activos: Para el ranking, un activo se valora en 10x su flujo mensual (Cap Rate simplificado).
+3. Interfaz (UI/UX)
+Estilo: "Corporate Cyberpunk Lite". Fondos oscuros (Slate-900), acentos neón (Rojo para peligro, Azul/Verde para éxito).
+Feedback:
+Visual: Cartas emergentes, barras de progreso, tablero SVG animado.
+Auditivo: Sonidos de caja registradora, alarmas y fanfarrias.
+📂 SECCIÓN 2: ARQUITECTURA TÉCNICA (TDD)
+📄 DOCUMENTO 3: TECHNICAL DESIGN DOCUMENT
+1. Stack Tecnológico (MERN + Python)
+Frontend: React 18 (Vite), Tailwind CSS. Despliegue en Vercel.
+Backend: Python 3.10+, FastAPI. Despliegue en Render.
+Base de Datos: MongoDB Atlas (NoSQL). ODM: Beanie (Motor asíncrono).
+Protocolo: HTTP (REST) para autenticación/creación. WebSockets (WSS) para el bucle de juego en tiempo real.
+2. Arquitectura de Datos
+El sistema utiliza un patrón Multi-Tenant Lógico.
+No hay bases de datos separadas por sala.
+Todos los jugadores viven en la colección players.
+La separación se logra mediante el campo session_id. El WebSocket Manager utiliza este campo para filtrar a quién le envía los mensajes (broadcast).
+3. Diagrama de Flujo de Datos (WebSocket)
+Client (React): Envía "ROLL" o "BUY".
+Server (FastAPI): Recibe mensaje -> Identifica Jugador -> Recupera Estado de MongoDB.
+Logic Engine: Calcula nueva posición, aplica matemáticas financieras, genera cola de eventos.
+Persistence: Guarda el nuevo estado con await player.set({...}).
+Broadcast:
+Envía UPDATE_PLAYER al cliente específico.
+Recalcula el Ranking de la sala.
+Envía LEADERBOARD a todos los clientes de esa session_id.
+📄 DOCUMENTO 4: DICCIONARIO DE DATOS (DATABASE SCHEMA)
+Colección: game_sessions
+Campo	Tipo	Descripción
+_id	ObjectId	Identificador único.
+code	String	Código de acceso (ej. "CLASE-A"). Único.
+salary	Decimal128	Salario base por vuelta configurado.
+winning_score	Decimal128	Meta de patrimonio para ganar.
+created_at	DateTime	Timestamp de creación.
+Colección: players
+Campo	Tipo	Descripción
+_id	ObjectId	Identificador único.
+nickname	String	Nombre visible.
+session_id	String	ID de la sesión a la que pertenece.
+position	Int	Casilla actual (0-30).
+laps_completed	Int	Cantidad de Paydays cobrados.
+financials.cash	Decimal128	Efectivo líquido.
+financials.netWorth	Decimal128	Patrimonio Neto (Score).
+financials.toxicDebt	Decimal128	Deuda acumulada.
+financials.passiveIncome	Decimal128	Flujo de caja positivo.
+📂 SECCIÓN 3: MANUALES DE USUARIO
+📄 DOCUMENTO 5: MANUAL DEL PROFESOR (ADMINISTRADOR)
+Objetivo
+Utilizar el simulador como herramienta de apoyo para enseñar conceptos de educación financiera, gestión de riesgo e inversión.
+Pasos para Iniciar una Clase
+Acceso: Ingrese a la URL del juego desde el ordenador del aula (proyector).
+Crear Sala: Seleccione la pestaña "PROFESOR".
+Configuración:
+Código: Ingrese una palabra fácil (ej. FINANZAS101).
+Salario: Se recomienda $2,500 para partidas estándar.
+Meta: Se recomienda $1,000,000.
+Lobby: Al pulsar "CREAR SALA", verá el Panel de Control. Proyecte esta pantalla.
+Monitoreo:
+A la izquierda verá el Ranking en tiempo real.
+Al centro verá el Mapa con las fichas de los alumnos moviéndose.
+A la derecha tiene controles para Reiniciar la sala si es necesario.
+Dinámica de Clase Sugerida
+Deje que los alumnos jueguen libremente durante 10-15 minutos.
+Pause la actividad y pregunte: "¿Quién tiene más ingresos pasivos? ¿Cómo lo lograron?".
+Utilice los eventos de "Lobo Negro" que aparezcan en el historial global para explicar los peligros del gasto hormiga.
+📄 DOCUMENTO 6: MANUAL DEL ESTUDIANTE
+Objetivo
+Escapar de la "Carrera de la Rata" alcanzando la Meta de Patrimonio establecida por el profesor.
+Cómo Jugar
+Ingreso: Entra a la web en tu celular. Selecciona "ESTUDIANTE".
+Registro: Pon el código que está en la pizarra y tu nombre.
+El Tablero:
+Pulsa LANZAR DADOS para moverte.
+Tu ficha (punto blanco) se moverá en el círculo.
+Las Casillas:
+🔴 Lobo Negro: ¡Cuidado! Gastos obligatorios. Si no tienes efectivo, el banco te presta automático con intereses altos.
+🔵 Lobo Blanco: ¡Oportunidad! Si tienes efectivo suficiente, aparecerá un botón para COMPRAR. Esto aumentará tu Ingreso Pasivo.
+💰 Payday: Cada vez que completas una vuelta, cobras tu sueldo + tus ingresos pasivos.
+Estrategia: No acumules solo efectivo. Invierte en activos (Lobos Blancos) para que tu dinero crezca solo. Evita la deuda a toda costa.
+📂 SECCIÓN 4: OPERACIONES (DEVOPS)
+📄 DOCUMENTO 7: GUÍA DE INSTALACIÓN Y DESPLIEGUE
+Requisitos Previos
+Cuenta en GitHub.
+Cuenta en MongoDB Atlas (Cluster gratuito).
+Cuenta en Render (Para Backend Python).
+Cuenta en Vercel (Para Frontend React).
+Paso 1: Backend (Render)
+Crear nuevo "Web Service" conectado al repo de GitHub.
+Build Command: pip install -r requirements.txt
+Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
+Environment Variables: Añadir MONGO_URI con la cadena de conexión de Atlas.
+Paso 2: Frontend (Vercel)
+Importar proyecto desde GitHub.
+Seleccionar carpeta raíz: frontend.
+Framework Preset: Vite.
+Environment Variables: Añadir VITE_API_URL con la dirección https://...onrender.com del backend (sin la barra final).
+Paso 3: Mantenimiento
+Para actualizar el juego, simplemente haga un git push a la rama main. Render y Vercel detectarán el cambio y re-desplegarán automáticamente.
+Si la base de datos se corrompe o se llena de basura, utilice el botón "REINICIAR SALA" desde el panel del profesor, o use el endpoint /reset_game vía Swagger.
+📄 DOCUMENTO 8: API REFERENCE (ENDPOINTS)
+POST /sessions
+Crea una nueva partida.
+Body: { "code": "ABC", "salary": 2500, "winning_score": 1000000 }
+Response 201: Objeto de sesión creado.
+POST /players
+Registra un jugador.
+Body: { "nickname": "Juan", "game_code": "ABC" }
+Response 201: Objeto jugador con ID y Token de sesión.
+WS /ws/{player_id}
+Canal bidireccional principal.
+Client -> Server:
+"ROLL": Lanzar dado.
+"BUY": Aceptar inversión.
+"PASS": Rechazar inversión.
+Server -> Client (JSON):
+type: "UPDATE_PLAYER": Datos financieros, posición y cola de eventos visuales.
+type: "DECISION_NEEDED": Solicita abrir modal de compra.
+type: "LEADERBOARD": Lista actualizada del ranking.
+type: "VICTORY": Notificación de ganador.
+Fin del Paquete de Documentación.
+Este conjunto de documentos cubre desde la visión creativa hasta la implementación técnica línea por línea. El proyecto "La Senda de los Lobos" está documentado a nivel profesional.
