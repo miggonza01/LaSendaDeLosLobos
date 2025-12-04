@@ -51,3 +51,8 @@ Backend: Mira la terminal 1. No debe haber errores rojos. Si ves Application sta
 Frontend: Abre el navegador en la URL que te dio la terminal 2 (usualmente http://localhost:5173).
 
 Prueba de Fuego: Intenta crear una sala. Si ves los logs en la Terminal 1 reaccionando (POST /sessions 201 Created), ¡hemos vuelto!
+
+
+git add .
+git commit -m "Comentario"
+git push

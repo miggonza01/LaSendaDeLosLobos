@@ -1,17 +1,17 @@
 // =============================================================================
 // 📄 ARCHIVO: src/App.jsx
-// 📄 VERSIÓN: 7.0 (FINAL STABLE - RECONEXIÓN GARANTIZADA)
+// 📄 VERSIÓN: 7.1 (FIX: ACTUALIZACIÓN DE POSICIÓN VISUAL)
 // =============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
 import FinancialDisplay from './components/FinancialDisplay';
 import Leaderboard from './components/Leaderboard';
 import EventCard from './components/EventCard';
-// Mantenemos la importación opcional. Si no tienes el archivo, comenta la línea.
+// Mantenemos la importación opcional.
 import TeacherDashboard from './components/TeacherDashboard'; 
 
 // -----------------------------------------------------------------------------
-// 🔊 SISTEMA DE AUDIO (Pre-carga y manejo de errores)
+// 🔊 SISTEMA DE AUDIO
 // -----------------------------------------------------------------------------
 const AUDIO_CLIPS = {
   dice: new Audio("/dice-142528.mp3"), 
@@ -26,14 +26,13 @@ const playSound = (key) => {
     if (sound) { 
       sound.currentTime = 0; 
       sound.volume = 0.5; 
-      // Capturamos el error de promesa si el navegador bloquea el audio automático
       sound.play().catch(() => {}); 
     }
   } catch (error) { console.error("Error audio:", error); }
 };
 
 // -----------------------------------------------------------------------------
-// 🏆 COMPONENTE: PANTALLA DE VICTORIA
+// 🏆 PANTALLA DE VICTORIA
 // -----------------------------------------------------------------------------
 const VictoryScreen = ({ nickname, onReset }) => (
   <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 animate-fade-in p-4 backdrop-blur-sm">
@@ -52,10 +51,9 @@ const VictoryScreen = ({ nickname, onReset }) => (
 // ⚛️ COMPONENTE PRINCIPAL APP
 // =============================================================================
 function App() {
-  // Configuración de la URL de la API (Backend)
   const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-  // --- ESTADOS DE DATOS ---
+  // --- ESTADOS ---
   const [gameCode, setGameCode] = useState("");
   const [nickname, setNickname] = useState("");
   const [jugador, setJugador] = useState(null);
@@ -63,7 +61,6 @@ function App() {
   const [role, setRole] = useState(null); 
   const [isTeacherDashboard, setIsTeacherDashboard] = useState(false);
 
-  // --- ESTADOS DE JUEGO ---
   const [leaderboard, setLeaderboard] = useState([]);
   const [logs, setLog] = useState(["Esperando inicio..."]);
   const [configSalary, setConfigSalary] = useState("2500");
@@ -72,62 +69,51 @@ function App() {
   const [isRolling, setIsRolling] = useState(false);
   const [winner, setWinner] = useState(false);
 
-  // --- ESTADOS DE DEBUG/CONEXIÓN ---
   const [wsStatus, setWsStatus] = useState("Espera ⚪");
-  const [debugInfo, setDebugInfo] = useState(""); // Para ver errores en pantalla
+  const [debugInfo, setDebugInfo] = useState(""); 
 
-  // Referencias para evitar problemas de dependencias en useEffect
   const ws = useRef(null);
   const isTeacherRef = useRef(isTeacherDashboard);
   const gameCodeRef = useRef(gameCode);
 
-  // Sincronización de Refs
   useEffect(() => { isTeacherRef.current = isTeacherDashboard; }, [isTeacherDashboard]);
   useEffect(() => { gameCodeRef.current = gameCode; }, [gameCode]);
 
   const addLog = (msg) => setLog(prev => [...prev.slice(-4), msg]);
 
-  // ---------------------------------------------------------------------------
-  // 1. HEALTH CHECK (Verifica si el backend está vivo)
-  // ---------------------------------------------------------------------------
+  // 1. HEALTH CHECK
   useEffect(() => {
     fetch(`${API_URL}/`)
       .then(() => setBackendStatus("Online 🟢"))
       .catch((err) => {
           console.error(err);
           setBackendStatus("Offline 🔴");
-          setDebugInfo(`Error HTTP: No se puede conectar a ${API_URL}`);
+          setDebugInfo(`Error HTTP: ${API_URL}`);
       });
   }, [API_URL]);
   const [backendStatus, setBackendStatus] = useState("Conectando...");
 
-  // ---------------------------------------------------------------------------
-  // 2. MOTOR WEBSOCKET (CON LOGICA DE RECONEXIÓN LIMPIA)
-  // ---------------------------------------------------------------------------
+  // 2. MOTOR WEBSOCKET
   useEffect(() => {
-    // Si no hay jugador logueado, no intentamos nada.
     if (!jugador) {
         setWsStatus("Inactivo ⚪");
         return;
     }
 
-    // A. Construcción de URL (Manejo seguro de wss/ws)
     const idJugador = jugador.id || jugador._id;
     const protocol = API_URL.startsWith("https") ? "wss" : "ws";
-    const host = API_URL.replace(/^http(s)?:\/\//, '').replace(/\/$/, ""); // Limpieza de URL
+    const host = API_URL.replace(/^http(s)?:\/\//, '').replace(/\/$/, "");
     const url = `${protocol}://${host}/ws/${idJugador}`;
 
-    setDebugInfo(`Intentando WS a: ${url}`);
+    setDebugInfo(`WS: ${url}`);
     setWsStatus("Conectando... 🟡");
 
-    // B. Creación del Socket
     const socket = new WebSocket(url);
 
-    // C. Manejadores de Eventos
     socket.onopen = () => {
         setWsStatus("Conectado 🟢");
         addLog(`✅ Sala: ${gameCodeRef.current}`);
-        setDebugInfo(""); // Limpiar errores
+        setDebugInfo(""); 
     };
     
     socket.onmessage = (e) => {
@@ -135,20 +121,25 @@ function App() {
             const data = JSON.parse(e.data);
             
             if (data.type === "UPDATE_PLAYER") {
-                // Actualización de MI estado
                 if (data.payload.player_id === idJugador) {
                     setJugador(prev => ({ 
-                        ...prev, ...data.payload, financials: { 
+                        ...prev, 
+                        // --- CORRECCIÓN CRÍTICA AQUÍ ---
+                        // Mapeamos explícitamente 'new_position' a 'position'
+                        // para que React actualice el número en pantalla.
+                        position: data.payload.new_position,
+                        laps_completed: prev.laps_completed, // Mantenemos el dato previo si no viene
+                        
+                        financials: { 
                             cash: data.payload.new_cash,
                             netWorth: data.payload.new_net_worth,
                             toxicDebt: data.payload.new_debt,
                             passiveIncome: data.payload.new_passive_income
                         }
                     }));
-                    // Cola de Eventos Visuales
+                    
                     if (data.payload.event_queue?.length) {
                         setCardQueue(prev => [...prev, ...data.payload.event_queue]);
-                        // Sonidos (Si no soy el profe)
                         if (!isTeacherRef.current) {
                             const evts = data.payload.event_queue;
                             if(evts.some(ev => ev.tipo === "LOBO_NEGRO")) playSound("alert");
@@ -176,11 +167,9 @@ function App() {
 
     socket.onclose = (event) => {
         setWsStatus("Desconectado 🔴");
-        console.log(`WS Cerrado: ${event.code} (${event.reason})`);
-        
-        // Auto-Logout si el servidor no nos reconoce (DB Reiniciada o ID inválido)
+        console.log(`WS Cerrado: ${event.code}`);
         if (event.code === 1008) {
-            alert("⚠️ Sesión expirada. Servidor reiniciado.");
+            alert("⚠️ Sesión expirada.");
             setJugador(null);
             setNickname("");
             setRole(null);
@@ -190,24 +179,18 @@ function App() {
     socket.onerror = (error) => {
         console.error("WS Error:", error);
         setWsStatus("Error ⚠️");
-        setDebugInfo("Error de conexión WebSocket. Revisa la consola.");
     };
 
-    // Guardamos referencia
     ws.current = socket;
 
-    // D. Limpieza al desmontar (Cleanup)
     return () => {
         if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
             socket.close();
         }
     };
-  }, [jugador, API_URL]); // Dependencia: Se reinicia si cambia el objeto jugador (login/logout)
+  }, [jugador, API_URL]); 
 
-  // ---------------------------------------------------------------------------
-  // 3. HANDLERS (ACCIONES)
-  // ---------------------------------------------------------------------------
-  
+  // 3. HANDLERS
   const handleRegister = async () => {
       if(!nickname || !gameCode) return setMensaje("Faltan datos");
       setMensaje("Entrando...");
@@ -220,7 +203,7 @@ function App() {
           const data = await res.json();
           if(!res.ok) throw new Error(data.detail);
           
-          setJugador(data); // Esto disparará el useEffect del WebSocket
+          setJugador(data);
           setIsTeacherDashboard(false);
           setMensaje("");
       } catch(e) { setMensaje(e.message); }
@@ -244,7 +227,7 @@ function App() {
           const data = await res2.json();
           if(!res2.ok) throw new Error(data.detail);
           
-          setJugador(data); // Esto disparará el useEffect del WebSocket
+          setJugador(data);
           setIsTeacherDashboard(true);
           setMensaje("");
       } catch(e) { setMensaje(e.message); }
@@ -276,17 +259,17 @@ function App() {
       }
   };
 
-  // ---------------------------------------------------------------------------
-  // 4. RENDERIZADO
-  // ---------------------------------------------------------------------------
-  
+  // 4. RENDER
   if (jugador && isTeacherDashboard) {
       return (
         <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center p-6">
             {typeof TeacherDashboard !== 'undefined' ? (
                 <TeacherDashboard gameCode={gameCode} playersData={leaderboard} onReset={handleGlobalReset} connectedCount={leaderboard.length - 1} />
             ) : (
-                <div className="text-center mt-10"><h1 className="text-2xl font-bold">PANEL DOCENTE (Fallback)</h1><button onClick={resetGame} className="underline mt-4">Salir</button></div>
+                <div className="w-full max-w-4xl text-center">
+                    <h1 className="text-4xl text-lobo-neion-red font-bold mb-4">PANEL DOCENTE</h1>
+                    <button onClick={resetGame} className="mt-4 underline">Salir</button>
+                </div>
             )}
         </div>
       );
@@ -303,10 +286,8 @@ function App() {
                 <div className="bg-slate-800 p-4 rounded-xl border-l-4 border-lobo-neion-red flex justify-between">
                     <div>
                         <h2 className="text-xl font-bold">🐺 {jugador.nickname}</h2>
-                        {/* ESTADO DE CONEXIÓN VISUAL */}
                         <div className="flex flex-col">
                             <span className="text-xs text-slate-400">WS: {wsStatus}</span>
-                            {/* Mostrar debug si hay error */}
                             {debugInfo && <span className="text-[9px] text-red-400">{debugInfo}</span>}
                         </div>
                     </div>
