@@ -1,43 +1,36 @@
 // =============================================================================
 // 📄 ARCHIVO: src/App.jsx
-// 📄 VERSIÓN: 8.2 (UI UPDATE & LOGS FIX)
-// 📝 DESCRIPCIÓN: Controlador principal de la interfaz. Maneja la conexión
-//    WebSocket, el enrutamiento de vistas (Alumno/Profesor) y el estado global.
+// 📄 VERSIÓN: 8.3 (LINTER FIX: BACKEND STATUS RESTORED)
+// 📝 DESCRIPCIÓN: Controlador principal. Se reactiva el monitoreo visual
+//    del estado del servidor para corregir variables no usadas.
 // =============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
 
 // --- IMPORTACIÓN DE COMPONENTES VISUALES ---
-// FinancialDisplay: Muestra las 4 columnas de dinero (Efectivo, Flujo, Patrimonio, Deuda)
 import FinancialDisplay from './components/FinancialDisplay';
-// Leaderboard: Muestra la tabla de posiciones en tiempo real
 import Leaderboard from './components/Leaderboard';
-// EventCard: Muestra las tarjetas emergentes (Lobos y Payday)
 import EventCard from './components/EventCard';
-// TeacherDashboard: Vista exclusiva para el proyector del profesor
 import TeacherDashboard from './components/TeacherDashboard'; 
 
 // -----------------------------------------------------------------------------
 // 🔊 SISTEMA DE AUDIO
 // -----------------------------------------------------------------------------
-// Precargamos los audios para evitar latencia al reproducirlos.
 const AUDIO_CLIPS = {
-  dice: new Audio("/dice-142528.mp3"), // Archivo local en public/
-  // Archivos en nube para efectos genéricos
+  dice: new Audio("/dice-142528.mp3"), 
   cash: new Audio("https://actions.google.com/sounds/v1/cartoon/clinking_coins.ogg"), 
   alert: new Audio("https://actions.google.com/sounds/v1/cartoon/cartoon_cowbell.ogg"), 
   victory: new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg") 
 };
 
-// Función auxiliar para manejar la reproducción segura (evita errores de Autoplay policy)
+// Función auxiliar para reproducción segura
 const playSound = (key) => {
   try {
     const sound = AUDIO_CLIPS[key];
     if (sound) { 
-      sound.currentTime = 0; // Reinicia el audio para permitir sonidos repetidos rápidos
-      sound.volume = 0.5;    // Volumen medio
-      // El catch vacío silencia errores si el usuario no ha interactuado aún con la página
-      sound.play().catch(() => {}); 
+      sound.currentTime = 0; 
+      sound.volume = 0.5; 
+      sound.play().catch(() => {}); // Catch silencioso para autoplay policies
     }
   } catch (error) { 
     console.error("Error crítico en sistema de audio:", error); 
@@ -45,7 +38,7 @@ const playSound = (key) => {
 };
 
 // -----------------------------------------------------------------------------
-// 🏆 COMPONENTE: PANTALLA DE VICTORIA (MODAL)
+// 🏆 COMPONENTE: PANTALLA DE VICTORIA
 // -----------------------------------------------------------------------------
 const VictoryScreen = ({ nickname, onReset }) => (
   <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 animate-fade-in p-4 backdrop-blur-sm">
@@ -66,97 +59,84 @@ const VictoryScreen = ({ nickname, onReset }) => (
 // ⚛️ COMPONENTE PRINCIPAL APP
 // =============================================================================
 function App() {
-  // Configuración de URL: Intenta leer variable de entorno (Vercel), si no usa localhost.
   const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
   // ---------------------------------------------------------------------------
-  // 1. ESTADOS DE LA APLICACIÓN (STATE)
+  // 1. ESTADOS (STATE)
   // ---------------------------------------------------------------------------
+  const [gameCode, setGameCode] = useState(""); 
+  const [nickname, setNickname] = useState(""); 
+  const [role, setRole] = useState(null);       
+  const [jugador, setJugador] = useState(null); 
   
-  // Datos de Sesión
-  const [gameCode, setGameCode] = useState(""); // Código de la sala (Ej. CLASE-A)
-  const [nickname, setNickname] = useState(""); // Nombre del usuario
-  const [role, setRole] = useState(null);       // Rol seleccionado: 'STUDENT' o 'PROFESSOR'
+  // Datos del Juego
+  const [leaderboard, setLeaderboard] = useState([]); 
+  const [globalActivity, setGlobalActivity] = useState([]); 
   
-  // Datos del Jugador y Juego
-  const [jugador, setJugador] = useState(null); // Objeto completo del jugador (traído del backend)
-  const [leaderboard, setLeaderboard] = useState([]); // Lista de ranking
-  const [globalActivity, setGlobalActivity] = useState([]); // Historial para el dashboard del profesor
-  
-  // Configuración de la Sala (Inputs del Profesor)
+  // Configuración Sala
   const [configSalary, setConfigSalary] = useState("2500");
   const [configGoal, setConfigGoal] = useState("1000000");
-  const [gameTarget, setGameTarget] = useState("1000000"); // Meta visual para la barra de progreso
+  const [gameTarget, setGameTarget] = useState("1000000"); 
 
-  // Estados de Interfaz (UI)
-  const [mensaje, setMensaje] = useState("");   // Mensajes de error/éxito en login
-  const [backendStatus, setBackendStatus] = useState("Conectando..."); // Estado del servidor API
-  const [logs, setLog] = useState(["Esperando inicio..."]); // Chat de sistema (Corrección: Variable 'logs')
-  const [cardQueue, setCardQueue] = useState([]); // Cola de cartas de eventos
-  const [isRolling, setIsRolling] = useState(false); // Animación de dados
-  const [lastDice, setLastDice] = useState(null);    // Último número sacado
-  const [winner, setWinner] = useState(false);       // Estado de victoria
+  // UI States
+  const [mensaje, setMensaje] = useState("");   
   
-  // Estado interno para saber si estamos mostrando el panel de profesor
+  // 🛠️ CORRECCIÓN: Reactivamos el uso de estas variables
+  const [backendStatus, setBackendStatus] = useState("Conectando..."); 
+  
+  const [logs, setLog] = useState(["Esperando inicio..."]); 
+  const [cardQueue, setCardQueue] = useState([]); 
+  const [isRolling, setIsRolling] = useState(false); 
+  const [lastDice, setLastDice] = useState(null);    
+  const [winner, setWinner] = useState(false);       
+  
   const [isTeacherDashboard, setIsTeacherDashboard] = useState(false);
-  const [wsStatus, setWsStatus] = useState("⚪"); // Indicador visual de conexión (semáforo)
+  const [wsStatus, setWsStatus] = useState("⚪"); 
 
-  // Referencias (Refs) para manejo de WebSocket sin re-renderizados
   const ws = useRef(null);
-  
-  // Refs espejo: Permiten acceder al valor más reciente del estado dentro del EventListener del WebSocket
-  // sin tener que reiniciar la conexión cada vez que el estado cambia.
   const isTeacherRef = useRef(isTeacherDashboard);
   const gameCodeRef = useRef(gameCode);
 
-  // Sincronización de Refs
   useEffect(() => { isTeacherRef.current = isTeacherDashboard; }, [isTeacherDashboard]);
   useEffect(() => { gameCodeRef.current = gameCode; }, [gameCode]);
 
-  // Helper para añadir logs (mantiene máximo 4 líneas para no saturar la UI)
   const addLog = (msg) => setLog(prev => [...prev.slice(-4), msg]);
 
   // ---------------------------------------------------------------------------
   // 2. EFECTOS (SIDE EFFECTS)
   // ---------------------------------------------------------------------------
 
-  // Health Check: Verifica si el backend está disponible al cargar la página
+  // ✅ HEALTH CHECK (CORREGIDO)
+  // Ahora usamos setBackendStatus para actualizar la UI, eliminando el error de "unused vars".
   useEffect(() => {
     fetch(`${API_URL}/`)
-      .then(() => {}) // Conexión exitosa
-      .catch(() => console.log("Backend offline")); // Fallo silencioso en consola
+      .then(() => setBackendStatus("En Línea 🟢")) // Uso 1: Actualizar éxito
+      .catch(() => setBackendStatus("Offline 🔴")); // Uso 2: Actualizar error
   }, [API_URL]);
 
-  // MOTOR WEBSOCKET: Maneja la comunicación en tiempo real
+  // MOTOR WEBSOCKET
   useEffect(() => {
-    // Solo intentamos conectar si hay un jugador autenticado
     if (!jugador) return;
 
-    // Construcción dinámica de la URL del WebSocket (ws:// o wss://)
     const idJugador = jugador.id || jugador._id;
     const protocol = API_URL.startsWith("https") ? "wss" : "ws";
     const host = API_URL.replace(/^http(s)?:\/\//, '').replace(/\/$/, "");
     const url = `${protocol}://${host}/ws/${idJugador}`;
 
-    // Evitar reconexión si ya existe un socket abierto
     if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
 
-    setWsStatus("🟡"); // Amarillo: Conectando
+    setWsStatus("🟡");
     const socket = new WebSocket(url);
 
-    // Evento: Conexión Abierta
-    socket.onopen = () => setWsStatus("🟢"); // Verde: Conectado
+    socket.onopen = () => setWsStatus("🟢");
     
-    // Evento: Mensaje Recibido
     socket.onmessage = (e) => {
         try {
             const data = JSON.parse(e.data);
             
-            // CASO A: Actualización de Estado de Jugador
             if (data.type === "UPDATE_PLAYER") {
                 const payload = data.payload;
                 
-                // LÓGICA PROFESOR: Alimentar bitácora de actividad global
                 if (payload.event_queue && payload.event_queue.length > 0) {
                     setGlobalActivity(prev => [{
                         player: payload.nickname || "Jugador",
@@ -165,12 +145,11 @@ function App() {
                     }, ...prev].slice(0, 20)); 
                 }
 
-                // LÓGICA ALUMNO: Si el mensaje es para MÍ, actualizo mi tablero
                 if (payload.player_id === idJugador) {
                     setJugador(prev => ({ 
                         ...prev, 
-                        ...payload, // Mantiene datos base
-                        position: payload.new_position, // Actualiza posición visual
+                        ...payload, 
+                        position: payload.new_position, 
                         financials: { 
                             cash: payload.new_cash,
                             netWorth: payload.new_net_worth,
@@ -179,14 +158,11 @@ function App() {
                         }
                     }));
                     
-                    // Actualizar estados visuales
                     if (payload.game_target) setGameTarget(payload.game_target);
                     if (payload.dice_value) setLastDice(payload.dice_value);
 
-                    // Procesar eventos visuales (Cartas)
                     if (payload.event_queue?.length) {
                         setCardQueue(prev => [...prev, ...payload.event_queue]);
-                        // Sonidos (Solo si no es el profesor observando)
                         if (!isTeacherRef.current) {
                             const evts = payload.event_queue;
                             if (evts.some(ev => ev.tipo === "LOBO_NEGRO")) playSound("alert");
@@ -194,44 +170,34 @@ function App() {
                         }
                     }
                 }
-            } 
-            // CASO B: Actualización de Ranking
-            else if (data.type === "LEADERBOARD") {
+            } else if (data.type === "LEADERBOARD") {
                 setLeaderboard(data.payload);
-            } 
-            // CASO C: Victoria
-            else if (data.type === "VICTORY") {
+            } else if (data.type === "VICTORY") {
                 addLog(data.message);
                 if (data.payload?.player_id === idJugador && !isTeacherRef.current) {
                     setWinner(true);
                     playSound("victory");
                 }
             }
-        } catch (err) { console.error("Error WS:", err); }
+        } catch (err) { console.error(err); }
     };
 
-    // Evento: Cierre de Conexión
     socket.onclose = (evt) => {
-        setWsStatus("🔴"); // Rojo: Desconectado
-        // Código 1008: Policy Violation (Usado por Backend cuando no encuentra al jugador en BD)
+        setWsStatus("🔴");
         if (evt.code === 1008) {
-            alert("⚠️ La sesión ha expirado o la sala se cerró.");
+            alert("Sesión inválida.");
             setJugador(null);
             setRole(null);
         }
     };
 
     ws.current = socket;
-    
-    // Cleanup al desmontar el componente (cierra conexión)
     return () => { if (ws.current) ws.current.close(); };
   }, [jugador, API_URL]); 
 
   // ---------------------------------------------------------------------------
-  // 3. HANDLERS (MANEJADORES DE ACCIÓN)
+  // 3. HANDLERS
   // ---------------------------------------------------------------------------
-  
-  // Alumno: Unirse a Sala
   const handleRegister = async () => {
       if(!nickname || !gameCode) return setMensaje("Faltan datos");
       setMensaje("Conectando...");
@@ -243,31 +209,23 @@ function App() {
           });
           const data = await res.json();
           if(!res.ok) throw new Error(data.detail);
-          
           setJugador(data);
           setIsTeacherDashboard(false);
           setMensaje("");
       } catch(e) { setMensaje(e.message); }
   };
 
-  // Profesor: Crear Sala
   const handleCreateSession = async () => {
       if(!gameCode) return setMensaje("Falta Código");
       setMensaje("Creando...");
       try {
-          // 1. Crear Sesión con reglas
           const res1 = await fetch(`${API_URL}/sessions`, {
               method: 'POST',
               headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ 
-                  code: gameCode, 
-                  salary: Number(configSalary), 
-                  winning_score: Number(configGoal) 
-              })
+              body: JSON.stringify({ code: gameCode, salary: Number(configSalary), winning_score: Number(configGoal) })
           });
           if(!res1.ok) throw new Error((await res1.json()).detail);
           
-          // 2. Auto-entrar como Profesor (Host)
           const res2 = await fetch(`${API_URL}/players`, {
               method: 'POST',
               headers: {'Content-Type': 'application/json'},
@@ -282,17 +240,15 @@ function App() {
       } catch(e) { setMensaje(e.message); }
   };
 
-  // Acción de Juego: Lanzar Dados
   const lanzarDados = () => {
       if(ws.current?.readyState === WebSocket.OPEN) {
           setIsRolling(true);
           playSound("dice");
           ws.current.send("lanzado los dados");
-          setTimeout(() => setIsRolling(false), 800); // Duración de animación
+          setTimeout(() => setIsRolling(false), 800);
       }
   };
 
-  // Salir / Reset Local
   const resetGame = () => {
       if(ws.current) ws.current.close();
       setJugador(null);
@@ -301,23 +257,20 @@ function App() {
       setIsTeacherDashboard(false);
   };
 
-  // Reset Global (Solo Profesor) - Borra BD
   const handleGlobalReset = async () => {
-      if(confirm("¿Estás seguro? Esto borrará TODA la base de datos.")) {
+      if(confirm("¿Borrar DB?")) {
           await fetch(`${API_URL}/reset_game`, {method: 'DELETE'});
           window.location.reload();
       }
   };
 
   // ---------------------------------------------------------------------------
-  // 4. RENDERIZADO DE VISTAS
+  // 4. RENDERIZADO
   // ---------------------------------------------------------------------------
   
-  // --- VISTA 1: DASHBOARD DEL PROFESOR ---
   if (jugador && isTeacherDashboard) {
       return (
         <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center p-6">
-            {/* Pasamos los datos al componente TeacherDashboard */}
             <TeacherDashboard 
                 gameCode={gameCode} 
                 playersData={leaderboard} 
@@ -329,17 +282,13 @@ function App() {
       );
   }
 
-  // --- VISTA 2: INTERFAZ DEL ALUMNO (TABLERO) ---
   if (jugador && !isTeacherDashboard) {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-4 font-mono">
         <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
-            {/* Componentes Flotantes */}
             {winner && <VictoryScreen nickname={jugador.nickname} onReset={resetGame} />}
             {cardQueue.length > 0 && <EventCard eventData={cardQueue[0]} onClose={() => setCardQueue(prev => prev.slice(1))} />}
 
-            {/* COLUMNA IZQUIERDA: Datos Financieros */}
             <div className="lg:col-span-4 space-y-4">
                 <div className="bg-slate-800 p-4 rounded-xl border-l-4 border-lobo-neion-red flex justify-between">
                     <div>
@@ -348,12 +297,7 @@ function App() {
                     </div>
                     <button onClick={resetGame} className="text-xs underline">Salir</button>
                 </div>
-                
-                {/* Visualizador de Finanzas (Recibe meta para barra de progreso) */}
                 <FinancialDisplay financials={jugador.financials} target={gameTarget} />
-                
-                {/* 🛠️ AQUÍ USAMOS LA VARIABLE 'logs' QUE DABA ERROR DE LINTER 🛠️ */}
-                {/* Caja de historial de texto para el alumno */}
                 <div className="bg-slate-800 p-4 rounded-xl h-48 overflow-y-auto text-xs font-mono border border-slate-700">
                    <p className="text-slate-500 border-b border-slate-700 pb-1 mb-1">Historial del Sistema:</p>
                    {logs.map((l, i) => (
@@ -362,11 +306,9 @@ function App() {
                 </div>
             </div>
 
-            {/* COLUMNA CENTRAL: Acción de Juego */}
             <div className="lg:col-span-5 flex flex-col gap-4">
                 <div className="bg-slate-800 p-6 rounded-xl min-h-[300px] flex flex-col items-center justify-center relative overflow-hidden">
                     <div className="text-center z-10">
-                        {/* Mostrar resultado del dado si existe */}
                         {lastDice && (
                             <div className="text-2xl text-yellow-400 font-bold mb-2 animate-bounce">
                                 🎲 {lastDice}
@@ -376,16 +318,11 @@ function App() {
                         <p className="text-lobo-neion-red font-bold text-sm">POSICIÓN ACTUAL</p>
                     </div>
                 </div>
-                <button 
-                    onClick={lanzarDados} 
-                    disabled={isRolling} 
-                    className="w-full bg-lobo-neion-red hover:bg-red-600 py-6 rounded-xl font-black text-xl shadow-lg transition-transform active:scale-95 disabled:opacity-50"
-                >
+                <button onClick={lanzarDados} disabled={isRolling} className="w-full bg-lobo-neion-red hover:bg-red-600 py-6 rounded-xl font-black text-xl shadow-lg transition-transform active:scale-95 disabled:opacity-50">
                     {isRolling ? "🎲 ..." : "LANZAR DADOS"}
                 </button>
             </div>
 
-            {/* COLUMNA DERECHA: Ranking */}
             <div className="lg:col-span-3">
                 <Leaderboard players={leaderboard.filter(p => p.nickname !== "HOST_PROFESOR")} myNickname={jugador.nickname} />
             </div>
@@ -394,13 +331,17 @@ function App() {
     );
   }
 
-  // --- VISTA 3: LOGIN / MENÚ PRINCIPAL ---
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl">
         <h1 className="text-4xl font-black text-center text-white mb-8">
             LA SENDA <span className="text-lobo-neion-red">DE LOS LOBOS</span>
         </h1>
+        
+        {/* ✅ USO DEL ESTADO RESTAURADO: Visualización del estado del servidor */}
+        <p className="text-center text-slate-500 mb-4 text-xs">
+            Estado API: {backendStatus}
+        </p>
         
         {!role ? (
           <div className="grid grid-cols-2 gap-4">
@@ -415,7 +356,6 @@ function App() {
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
             <button onClick={() => setRole(null)} className="text-xs text-slate-500 mb-2 hover:text-white">← Volver</button>
             
-            {/* Formulario Estudiante */}
             {role === 'STUDENT' ? (
                   <>
                     <input type="text" value={gameCode} onChange={(e) => setGameCode(e.target.value.toUpperCase())} placeholder="CÓDIGO DE SALA" className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-blue outline-none uppercase"/>
@@ -425,44 +365,22 @@ function App() {
                     </button>
                   </>
               ) : (
-                  /* Formulario Profesor (Con Textos Actualizados) */
                   <>
                     <div className="bg-slate-800 p-3 rounded text-xs text-slate-400 mb-2">
                         <p className="font-bold text-white mb-1">Configuración de la Partida</p>
                         Define las reglas económicas para esta sesión.
                     </div>
-                    
-                    {/* Campo Código */}
-                    <input 
-                        type="text" 
-                        value={gameCode} 
-                        onChange={(e) => setGameCode(e.target.value.toUpperCase())} 
-                        placeholder="NUEVO CÓDIGO DE SALA" 
-                        className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-red outline-none uppercase"
-                    />
-                    
-                    {/* Campos de Configuración */}
+                    <input type="text" value={gameCode} onChange={(e) => setGameCode(e.target.value.toUpperCase())} placeholder="NUEVO CÓDIGO DE SALA" className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-red outline-none uppercase"/>
                     <div className="flex gap-2">
                         <div className="flex-1">
                             <label className="text-[10px] text-slate-400 ml-1">Salario por turno</label>
-                            <input 
-                                type="number" 
-                                value={configSalary} 
-                                onChange={(e) => setConfigSalary(e.target.value)} 
-                                className="w-full bg-slate-800 p-2 rounded text-white border border-slate-600 focus:border-lobo-neion-red outline-none"
-                            />
+                            <input type="number" value={configSalary} onChange={(e) => setConfigSalary(e.target.value)} className="w-full bg-slate-800 p-2 rounded text-white border border-slate-600 focus:border-lobo-neion-red outline-none"/>
                         </div>
                         <div className="flex-1">
                             <label className="text-[10px] text-slate-400 ml-1">Meta para ganar (Patrimonio)</label>
-                            <input 
-                                type="number" 
-                                value={configGoal} 
-                                onChange={(e) => setConfigGoal(e.target.value)} 
-                                className="w-full bg-slate-800 p-2 rounded text-white border border-slate-600 focus:border-lobo-neion-red outline-none"
-                            />
+                            <input type="number" value={configGoal} onChange={(e) => setConfigGoal(e.target.value)} className="w-full bg-slate-800 p-2 rounded text-white border border-slate-600 focus:border-lobo-neion-red outline-none"/>
                         </div>
                     </div>
-                    
                     <button onClick={handleCreateSession} className="w-full bg-lobo-neion-red py-3 rounded font-bold text-white shadow-lg hover:bg-red-600 transition-colors">
                         CREAR SALA
                     </button>
