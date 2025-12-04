@@ -1,5 +1,5 @@
 # ==============================================================================
-# 📄 ARCHIVO: main.py (VERSIÓN 7.0: LIFECYCLE PERFECTO)
+# 📄 ARCHIVO: main.py (VERSIÓN 3.2: VISIBILIDAD TOTAL)
 # ==============================================================================
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -18,20 +18,14 @@ from board import obtener_evento, CASILLAS_TOTALES
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    print("--- 🚀 MOTOR LISTO ---")
+    print("--- 🚀 MOTOR LISTO v3.2 ---")
     yield
     print("--- 🛑 APAGANDO ---")
 
-app = FastAPI(title="La Senda de los Lobos", version="7.0", lifespan=lifespan)
+app = FastAPI(title="La Senda de los Lobos", version="3.2.0", lifespan=lifespan)
 
-# CORS TOTAL
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
+origins = ["*"] 
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # --- RUTAS HTTP ---
 @app.get("/")
@@ -43,11 +37,12 @@ async def crear_sesion(sesion_entrada: SessionCreate):
     existente = await GameSession.find_one(GameSession.code == sesion_entrada.code)
     if existente:
         raise HTTPException(status_code=400, detail="¡Código en uso!")
-    nueva_sesion = GameSession(
-        code=sesion_entrada.code,
-        salary=sesion_entrada.salary if sesion_entrada.salary is not None else Decimal("2500.00"),
-        winning_score=sesion_entrada.winning_score if sesion_entrada.winning_score is not None else Decimal("1000000.00")
-    )
+    
+    # Si viene None, usamos defaults
+    salario = sesion_entrada.salary if sesion_entrada.salary is not None else Decimal("2500.00")
+    meta = sesion_entrada.winning_score if sesion_entrada.winning_score is not None else Decimal("1000000.00")
+
+    nueva_sesion = GameSession(code=sesion_entrada.code, salary=salario, winning_score=meta)
     await nueva_sesion.create()
     return nueva_sesion
 
@@ -77,34 +72,25 @@ async def reiniciar_juego():
 # --- WEBSOCKET ENGINE ---
 @app.websocket("/ws/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, player_id: str):
-    # [1] ACEPTAR SIEMPRE PRIMERO
-    try:
-        await websocket.accept()
-    except Exception:
-        # Si falla aceptar, no hay nada que hacer.
-        return
-
-    session_id = None
+    await websocket.accept()
+    
+    session_id = None 
     
     try:
-        # [2] VALIDAR DATOS
         jugador_inicial = await Player.get(player_id)
         if not jugador_inicial:
-            # Código 1008 = Policy Violation (Usado para forzar logout en frontend)
             await websocket.close(code=1008)
             return
         
         session_id = jugador_inicial.session_id
         
-        # [3] CARGAR REGLAS
+        # Recuperar reglas
         sesion_actual = await GameSession.get(session_id)
         SALARIO = sesion_actual.salary if sesion_actual else Decimal("2500.00")
         META = sesion_actual.winning_score if sesion_actual else Decimal("1000000.00")
 
-        # [4] REGISTRAR EN MANAGER
         await manager.connect(websocket, session_id)
         
-        # Función Ranking
         async def enviar_ranking():
             top = await Player.find(Player.session_id == session_id).sort("-financials.net_worth").limit(10).to_list()
             data = [{"nickname": p.nickname, "net_worth": str(p.financials.net_worth), "is_me": str(p.id) == player_id} for p in top]
@@ -112,7 +98,6 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
 
         await enviar_ranking()
 
-        # [5] BUCLE
         while True:
             data = await websocket.receive_text()
             
@@ -120,13 +105,13 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 jugador_actual = await Player.get(player_id)
                 if not jugador_actual: break
 
-                # Movimiento
+                # 1. Movimiento
                 dado = random.randint(1, 6)
                 pos = jugador_actual.position + dado
                 msg_payday = ""
                 cola = []
                 
-                # Payday
+                # 2. Payday
                 if pos > CASILLAS_TOTALES:
                     jugador_actual.position = pos - CASILLAS_TOTALES
                     jugador_actual.laps_completed += 1
@@ -134,11 +119,11 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     jugador_actual.apply_payday_logic(salary_amount=SALARIO)
                     diff = jugador_actual.financials.cash - dinero_prev
                     msg_payday = " 💰 ¡PAYDAY!"
-                    cola.append({"tipo": "PAYDAY", "titulo": "¡PAYDAY!", "descripcion": "Salario.", "monto": f"+${diff}"})
+                    cola.append({"tipo": "PAYDAY", "titulo": "¡PAYDAY!", "descripcion": "Salario + Rentas.", "monto": f"+${diff}"})
                 else:
                     jugador_actual.position = pos
                 
-                # Eventos
+                # 3. Eventos
                 evt = obtener_evento(jugador_actual.position)
                 desc = evt["descripcion"] if evt else ""
                 monto = None
@@ -162,12 +147,12 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                             jugador_actual.financials.cash -= costo
                             jugador_actual.financials.passive_income += flujo
                         else:
-                            desc = "Sin efectivo suficiente."
+                            desc = "Oportunidad perdida por falta de efectivo."
                             monto = None
 
                     cola.append({"tipo": evt["tipo"], "titulo": evt["titulo"], "descripcion": desc, "monto": monto})
 
-                # Guardar
+                # 4. Guardado
                 val_activos = jugador_actual.financials.passive_income * Decimal("10")
                 jugador_actual.calculate_net_worth(assets_value=val_activos)
                 await jugador_actual.set({
@@ -176,15 +161,18 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                     Player.financials: jugador_actual.financials
                 })
 
-                # Respuesta
-                tipo = "VICTORY" if jugador_actual.financials.net_worth >= META else "UPDATE_PLAYER"
-                log = f"🎲 {jugador_actual.nickname} ({jugador_actual.position})" + msg_payday
-                
+                # 5. Respuesta
+                tipo_msg = "VICTORY" if jugador_actual.financials.net_worth >= META else "UPDATE_PLAYER"
+                log = f"🎲 {jugador_actual.nickname} sacó un {dado} -> Casilla {jugador_actual.position}"
+
                 pkg = {
-                    "type": tipo,
+                    "type": tipo_msg,
                     "payload": {
                         "player_id": str(jugador_actual.id),
+                        "nickname": jugador_actual.nickname, # Enviamos nombre para que el profe sepa quién jugó
                         "new_position": jugador_actual.position,
+                        "dice_value": dado, # <--- DATO NUEVO: Valor del dado
+                        "game_target": str(META), # <--- DATO NUEVO: Meta del juego
                         "new_cash": str(jugador_actual.financials.cash),
                         "new_debt": str(jugador_actual.financials.toxic_debt),
                         "new_net_worth": str(jugador_actual.financials.net_worth),
@@ -197,10 +185,9 @@ async def websocket_endpoint(websocket: WebSocket, player_id: str):
                 await enviar_ranking()
 
             else:
-                await manager.broadcast(json.dumps({"type": "CHAT", "message": f"💬 {jugador_inicial.nickname}: {data}"}), session_id)
+                await manager.broadcast(json.dumps({"type": "CHAT", "message": f"💬 {data}"}), session_id)
 
     except WebSocketDisconnect:
         if session_id: manager.disconnect(websocket, session_id)
     except Exception as e:
-        # Error silencioso en producción
         if session_id: manager.disconnect(websocket, session_id)
