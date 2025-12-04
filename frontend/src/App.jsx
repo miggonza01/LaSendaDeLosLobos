@@ -1,8 +1,8 @@
 // =============================================================================
 // 📄 ARCHIVO: src/App.jsx
-// 📄 VERSIÓN: 8.4 (FIX: LOGS HISTORY & ROOM ID)
-// 📝 DESCRIPCIÓN: Controlador principal. Se corrigen la visualización de la
-//    sala en la vista de estudiante y la actualización del historial de texto.
+// 📄 VERSIÓN: 8.5 (HISTORIAL DETALLADO GLOBAL)
+// 📝 DESCRIPCIÓN: Controlador principal. Se ha mejorado la lógica del WebSocket
+//    para desglosar y narrar en el historial los eventos de TODOS los jugadores.
 // =============================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -23,7 +23,6 @@ const AUDIO_CLIPS = {
   victory: new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg") 
 };
 
-// Función auxiliar para reproducción segura
 const playSound = (key) => {
   try {
     const sound = AUDIO_CLIPS[key];
@@ -129,25 +128,50 @@ function App() {
         try {
             const data = JSON.parse(e.data);
             
-            // CASO: ACTUALIZACIÓN DE JUGADOR
+            // =================================================================
+            // 🧠 LÓGICA CENTRAL DE ACTUALIZACIÓN
+            // =================================================================
             if (data.type === "UPDATE_PLAYER") {
                 const payload = data.payload;
+                const pName = payload.nickname || "Jugador"; // Nombre de quien movió
                 
-                // 🛠️ CORRECCIÓN QUIRÚRGICA 1: ACTUALIZACIÓN DEL LOG
-                // Antes esto estaba solo en el 'else' o no existía para el propio jugador.
-                // Ahora lo ejecutamos siempre para que el historial se mueva.
-                addLog(data.message); 
+                // 1. LOGUEAR MOVIMIENTO BÁSICO (Para todos)
+                // data.message suele ser "🎲 Nombre (Casilla X)"
+                addLog(data.message);
 
-                // Lógica Profesor
+                // 2. 🛠️ AJUSTE QUIRÚRGICO: NARRAR LAS TARJETAS EN EL CHAT (Para todos)
+                // Recorremos los eventos y generamos texto descriptivo
                 if (payload.event_queue && payload.event_queue.length > 0) {
+                    payload.event_queue.forEach(evt => {
+                        let logText = "";
+                        if (evt.tipo === "PAYDAY") {
+                            logText = `💰 ${pName}: ¡Día de Pago! (${evt.monto})`;
+                        } else if (evt.tipo === "LOBO_NEGRO") {
+                            logText = `🐺 ${pName}: Cayó en ${evt.titulo} (${evt.monto})`;
+                        } else if (evt.tipo === "LOBO_BLANCO") {
+                            // Si hay monto negativo, es que compró. Si es null, no pudo.
+                            if (evt.monto) {
+                                logText = `📈 ${pName}: Invirtió en ${evt.titulo} (${evt.monto})`;
+                            } else {
+                                logText = `🔒 ${pName}: No pudo comprar ${evt.titulo}`;
+                            }
+                        } else if (evt.tipo === "NEUTRO") {
+                            // Opcional: Loguear eventos neutros
+                            // logText = `🧘 ${pName}: ${evt.titulo}`;
+                        }
+
+                        if (logText) addLog(logText);
+                    });
+
+                    // También alimentamos la bitácora del profesor
                     setGlobalActivity(prev => [{
-                        player: payload.nickname || "Jugador",
+                        player: pName,
                         position: payload.new_position,
                         events: payload.event_queue
                     }, ...prev].slice(0, 20)); 
                 }
 
-                // Lógica Alumno (Si soy yo)
+                // 3. ACTUALIZACIÓN DE ESTADO PERSONAL (Solo si soy yo)
                 if (payload.player_id === idJugador) {
                     setJugador(prev => ({ 
                         ...prev, 
@@ -164,6 +188,7 @@ function App() {
                     if (payload.game_target) setGameTarget(payload.game_target);
                     if (payload.dice_value) setLastDice(payload.dice_value);
 
+                    // Cola visual de tarjetas (Popups)
                     if (payload.event_queue?.length) {
                         setCardQueue(prev => [...prev, ...payload.event_queue]);
                         if (!isTeacherRef.current) {
@@ -184,7 +209,6 @@ function App() {
                     playSound("victory");
                 }
             }
-            // Mensajes de chat o sistema
             else if (data.type === "CHAT" || data.type === "SYSTEM") {
                 addLog(data.message);
             }
@@ -304,7 +328,6 @@ function App() {
                     <div>
                         <h2 className="text-xl font-bold">🐺 {jugador.nickname}</h2>
                         
-                        {/* 🛠️ CORRECCIÓN QUIRÚRGICA 2: VISUALIZACIÓN DE SALA */}
                         <p className="text-xs text-lobo-neon-blue font-bold mt-1">
                             SALA: <span className="text-white tracking-wider">{gameCode}</span>
                         </p>
@@ -318,7 +341,7 @@ function App() {
                 
                 <FinancialDisplay financials={jugador.financials} target={gameTarget} />
                 
-                {/* CAJA DE LOGS / HISTORIAL */}
+                {/* HISTORIAL DE JUEGO */}
                 <div className="bg-slate-800 p-4 rounded-xl h-48 overflow-y-auto text-xs font-mono border border-slate-700">
                    <p className="text-slate-500 border-b border-slate-700 pb-1 mb-1 font-bold">HISTORIAL DE JUEGO</p>
                    <div className="flex flex-col gap-1">
@@ -386,7 +409,7 @@ function App() {
             
             {role === 'STUDENT' ? (
                   <>
-                    <input type="text" value={gameCode} onChange={(e) => setGameCode(e.target.value.toUpperCase())} placeholder="CÓDIGO SALA" className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-blue outline-none uppercase"/>
+                    <input type="text" value={gameCode} onChange={(e) => setGameCode(e.target.value.toUpperCase())} placeholder="CÓDIGO DE SALA" className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-blue outline-none uppercase"/>
                     <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="APODO" className="w-full bg-slate-800 p-3 rounded text-white border border-slate-600 focus:border-lobo-neion-blue outline-none"/>
                     <button onClick={handleRegister} className="w-full bg-lobo-neon-blue py-3 rounded font-bold text-white shadow-lg hover:bg-blue-600 transition-colors">
                         ENTRAR AHORA
